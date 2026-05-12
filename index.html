@@ -439,6 +439,84 @@
       padding: 3px 9px; border-radius: 100px;
       margin-bottom: 14px;
     }
+
+    /* ── PROFILE CHIP (welcome screen) ──────────────────── */
+    #profile-chip {
+      display: none; margin: 0 16px 16px;
+      background: var(--navy); color: white;
+      border-radius: 16px; padding: 14px 16px;
+      align-items: center; gap: 12px;
+    }
+    #profile-chip.visible { display: flex; }
+    .pc-avatar {
+      width: 44px; height: 44px; border-radius: 50%;
+      background: rgba(232,96,76,0.2);
+      display: flex; align-items: center; justify-content: center; font-size: 22px; flex-shrink: 0;
+    }
+    .pc-body { flex: 1; min-width: 0; }
+    .pc-label { font-size: 11px; color: rgba(255,255,255,0.5); margin-bottom: 2px; }
+    .pc-size  { font-size: 24px; font-weight: 900; color: white; line-height: 1.1; }
+    .pc-detail { font-size: 11px; color: rgba(255,255,255,0.5); }
+    .pc-btn {
+      background: var(--coral); color: white; border: none;
+      border-radius: 100px; padding: 9px 15px;
+      font-size: 13px; font-weight: 600; font-family: inherit; cursor: pointer; flex-shrink: 0;
+    }
+
+    /* ── SAVE SECTION (result screen) ───────────────────── */
+    .save-section {
+      margin: 10px 16px 0;
+      background: var(--sage); border-radius: 16px;
+      padding: 14px 16px; display: flex; gap: 10px; align-items: center;
+    }
+    .save-section input {
+      flex: 1; border: 1.5px solid var(--light-border); border-radius: 100px;
+      padding: 10px 14px; font-size: 14px; font-family: inherit; background: white; outline: none;
+    }
+    .save-section input:focus { border-color: var(--coral); }
+    .save-section button {
+      background: var(--navy); color: white; border: none;
+      border-radius: 100px; padding: 10px 16px;
+      font-size: 13px; font-weight: 600; font-family: inherit; cursor: pointer; white-space: nowrap;
+    }
+    .save-confirm { text-align:center; padding: 6px 0 0; font-size:13px; color:#4CAF50; font-weight:600; }
+
+    /* ── EMBED CODE (result screen) ─────────────────────── */
+    .embed-section {
+      margin: 10px 16px 0; padding: 14px 16px;
+      background: var(--sage); border-radius: 16px;
+    }
+    .embed-section-lbl { font-size:11px; font-weight:700; color:var(--gray-text); text-transform:uppercase; letter-spacing:0.08em; margin-bottom:8px; }
+    .embed-code-box {
+      background: var(--charcoal); color: #9ef09e;
+      border-radius: 8px; padding: 10px 12px;
+      font-size: 10px; font-family: monospace; word-break: break-all; line-height: 1.55;
+      cursor: pointer;
+    }
+    .embed-hint { font-size:10px; color:var(--gray-text); margin-top:5px; }
+
+    /* ── WIDGET MODE ─────────────────────────────────────── */
+    #widget-bar {
+      display:none; position:fixed; inset:0; z-index:9999;
+      background:white; flex-direction:column;
+      align-items:center; justify-content:center; gap:8px;
+      padding: 20px;
+    }
+    #widget-bar.visible { display:flex; }
+    .wb-logo { margin-bottom: 4px; }
+    .wb-label { font-size:12px; color:var(--gray-text); font-weight:500; }
+    .wb-size  { font-size:56px; font-weight:900; color:var(--charcoal); line-height:1; }
+    .wb-detail { font-size:13px; color:var(--charcoal); font-weight:600; }
+    .wb-actions { display:flex; gap:8px; margin-top:10px; }
+    .wb-rescan {
+      padding:10px 20px; border-radius:100px; background:var(--coral); color:white;
+      border:none; font-size:13px; font-weight:600; font-family:inherit; cursor:pointer;
+    }
+    .wb-clear {
+      padding:10px 14px; border-radius:100px;
+      background:transparent; color:var(--gray-text); border:1.5px solid var(--light-border);
+      font-size:13px; font-weight:500; font-family:inherit; cursor:pointer;
+    }
   </style>
 </head>
 
@@ -535,6 +613,17 @@
         <button class="seg-btn active" data-size="A4">A4 &nbsp;210 × 297 mm</button>
         <button class="seg-btn"        data-size="Letter">Letter &nbsp;8.5 × 11″</button>
       </div>
+    </div>
+
+    <!-- Returning user profile chip -->
+    <div id="profile-chip">
+      <div class="pc-avatar">👤</div>
+      <div class="pc-body">
+        <div class="pc-label">Your saved size</div>
+        <div class="pc-size" id="pc-size">M</div>
+        <div class="pc-detail" id="pc-detail"></div>
+      </div>
+      <button class="pc-btn" id="btn-rescan">Rescan →</button>
     </div>
 
     <div class="cta-wrap">
@@ -655,11 +744,44 @@
       <button class="btn-coral" id="btn-retake">Scan again</button>
       <button class="btn-outline" id="btn-home">← Back to start</button>
     </div>
+    <!-- Save to profile -->
+    <div id="save-section" class="save-section">
+      <input id="save-name" type="text" placeholder="Your name (optional)" autocomplete="name">
+      <button id="save-btn">Save</button>
+    </div>
+    <div id="save-confirm" class="save-confirm" style="display:none;">✓ Saved to profile</div>
+
+    <!-- Store embed code -->
+    <div class="embed-section">
+      <div class="embed-section-lbl">Embed on your store</div>
+      <div class="embed-code-box" id="embed-code-box" onclick="copyEmbedCode(this)">&lt;iframe src="https://sebastianchriste-creator.github.io/height-scan?widget=1" width="100%" height="110" frameborder="0" style="border-radius:12px;border:none;"&gt;&lt;/iframe&gt;</div>
+      <div class="embed-hint" id="embed-hint">Tap to copy · Paste into any product page</div>
+    </div>
+
     <div id="demo-note" style="display:none; text-align:center; padding: 16px 20px 0; font-size:12px; color:var(--gray-text);">
       ★ Demo mode — measurements are simulated
     </div>
 
   </div>
+  <!-- Widget mode bar (shown when ?widget param is present) -->
+  <div id="widget-bar">
+    <div class="wb-logo">
+      <svg width="36" height="18" viewBox="0 0 48 24" fill="none">
+        <polyline points="2,2 11,12 2,22" stroke="#0D1B2A" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"/>
+        <line x1="17" y1="2" x2="17" y2="22" stroke="#0D1B2A" stroke-width="2.5" stroke-linecap="round"/>
+        <line x1="31" y1="22" x2="31" y2="5" stroke="#E8604C" stroke-width="2.5" stroke-linecap="round"/>
+        <polyline points="25,10 31,3 37,10" stroke="#E8604C" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"/>
+      </svg>
+    </div>
+    <div class="wb-label">Recommended size for you</div>
+    <div class="wb-size" id="wb-size">M</div>
+    <div class="wb-detail" id="wb-detail"></div>
+    <div class="wb-actions">
+      <button class="wb-rescan" id="wb-rescan">Scan me →</button>
+      <button class="wb-clear" id="wb-clear">Clear</button>
+    </div>
+  </div>
+
 </div>
 
 <!-- hidden processing canvas -->
@@ -716,6 +838,7 @@ let latestPose = null, isDetecting = false;
 let frameIdx = 0, paperOK = false, cachedPaperH = 0;
 let heightHist = [], stableCount = 0;
 let hasAutoCaptured = false, rafId = null;
+let lastMeas = null;
 
 // ── DOM ───────────────────────────────────────────────────────────────────────
 const video     = document.getElementById('video');
@@ -1118,12 +1241,17 @@ captureBtn.addEventListener('click',()=>{
 
 // ── RESULTS ───────────────────────────────────────────────────────────────────
 function showResult(m) {
+  lastMeas = m;
   document.getElementById('r-cm').textContent=m.heightCm;
   document.getElementById('r-imp').textContent=toImp(m.heightCm);
   document.getElementById('r-shoulder').textContent=m.shoulderCm?m.shoulderCm+' cm':'—';
   document.getElementById('r-build').textContent=getBuild(m.shoulderCm,m.heightCm);
   document.getElementById('r-paper').textContent=selectedPaper;
   document.getElementById('r-size').textContent=getSize(m.heightCm,m.shoulderCm);
+  // Reset save section for this result
+  document.getElementById('save-section').style.display='flex';
+  document.getElementById('save-confirm').style.display='none';
+  document.getElementById('save-name').value='';
   show('result');
 }
 
@@ -1308,28 +1436,10 @@ function drawTutScene3(vx, vy, vw, vh, t) {
   const personY=floorY-personH, pw=personH*0.30;
   const bob=Math.sin(t*Math.PI*7)*3*(1-Math.min(t*2.2,1));
 
-  ctx.fillStyle='rgba(45,45,65,0.88)';
-  const hr=pw*0.33;
-  ctx.beginPath(); ctx.arc(personX,personY+hr+bob,hr,0,Math.PI*2); ctx.fill();
-  const sy=personY+hr*2+4+bob, hy2=sy+personH*0.35;
-  ctx.beginPath(); ctx.moveTo(personX-pw*0.42,sy); ctx.lineTo(personX+pw*0.42,sy);
-  ctx.lineTo(personX+pw*0.32,hy2); ctx.lineTo(personX-pw*0.32,hy2); ctx.closePath(); ctx.fill();
-
-  ctx.strokeStyle='rgba(45,45,65,0.88)'; ctx.lineWidth=pw*0.40; ctx.lineCap='round';
-  const armSwing=Math.sin(t*Math.PI*7)*0.18*(1-Math.min(t*2.2,1));
-  const elbowY=sy+personH*0.2;
-  ctx.beginPath(); ctx.moveTo(personX-pw*0.38,sy); ctx.lineTo(personX-pw*0.5+Math.sin(armSwing)*25,elbowY); ctx.stroke();
-  ctx.beginPath(); ctx.moveTo(personX+pw*0.38,sy); ctx.lineTo(personX+pw*0.5-Math.sin(armSwing)*25,elbowY); ctx.stroke();
-
-  ctx.lineWidth=pw*0.44;
-  const kny=hy2+personH*0.23, ank=kny+personH*0.21;
-  const legSwing=Math.sin(t*Math.PI*7)*0.18*(1-Math.min(t*2.2,1));
-  const lkx=personX-pw*0.15+Math.sin(legSwing)*22;
-  ctx.beginPath(); ctx.moveTo(personX-pw*0.22,hy2); ctx.lineTo(lkx,kny); ctx.lineTo(lkx,ank); ctx.stroke();
-  const rkx=personX+pw*0.15-Math.sin(legSwing)*22;
-  ctx.beginPath(); ctx.moveTo(personX+pw*0.22,hy2); ctx.lineTo(rkx,kny); ctx.lineTo(rkx,ank); ctx.stroke();
+  drawAvatar(personX, floorY, personH, t);
 
   if(t>0.58){
+    const pw=personH*0.30;
     ctx.save(); ctx.globalAlpha=Math.min((t-0.58)*3.5,0.85);
     ctx.strokeStyle=CORAL; ctx.lineWidth=2.5; ctx.shadowColor=CORAL; ctx.shadowBlur=14;
     ctx.beginPath(); ctx.roundRect(personX-pw*0.6,personY-8,pw*1.2,personH+16,10); ctx.stroke();
@@ -1454,6 +1564,227 @@ function startDemo() {
     }
   }
   loop();
+}
+
+// ── IP → PAPER SIZE ──────────────────────────────────────────────────────────
+const LETTER_COUNTRIES = new Set(['US','CA','MX','GT','BZ','HN','SV','NI','CR','PA','CU','PR','DO','CL','CO','VE','PH','BM','JM','TT']);
+async function detectCountryPaper() {
+  try {
+    const ctrl = new AbortController();
+    const tid = setTimeout(() => ctrl.abort(), 3000);
+    const r = await fetch('https://ipapi.co/json/', {signal: ctrl.signal});
+    clearTimeout(tid);
+    const d = await r.json();
+    if (LETTER_COUNTRIES.has(d.country_code)) {
+      selectedPaper = 'Letter';
+      document.querySelectorAll('.seg-btn').forEach(b => {
+        b.classList.toggle('active', b.dataset.size === 'Letter');
+      });
+    }
+  } catch(_) {}
+}
+detectCountryPaper();
+
+// ── PROFILE (localStorage + cookie) ──────────────────────────────────────────
+const PROFILE_KEY = 'bodyscan_v1';
+const COOKIE_KEY  = 'bodyscan_size';
+
+function setCookie(name, val, days) {
+  document.cookie = `${name}=${encodeURIComponent(val)};expires=${new Date(Date.now()+days*864e5).toUTCString()};path=/;SameSite=Lax`;
+}
+function getCookie(name) {
+  const m = document.cookie.match(new RegExp('(?:^|; )'+name+'=([^;]*)'));
+  return m ? decodeURIComponent(m[1]) : null;
+}
+function saveProfile(meas) {
+  const name = (document.getElementById('save-name').value.trim()) || 'Me';
+  const record = {
+    name, date: new Date().toISOString(),
+    heightCm: meas.heightCm, shoulderCm: meas.shoulderCm,
+    size: getSize(meas.heightCm, meas.shoulderCm),
+    build: getBuild(meas.shoulderCm, meas.heightCm)
+  };
+  let profiles = JSON.parse(localStorage.getItem(PROFILE_KEY) || '[]');
+  profiles = profiles.filter(p => p.name !== name);
+  profiles.unshift(record);
+  profiles = profiles.slice(0, 5);
+  localStorage.setItem(PROFILE_KEY, JSON.stringify(profiles));
+  setCookie(COOKIE_KEY, JSON.stringify({size:record.size, heightCm:record.heightCm, shoulderCm:record.shoulderCm}), 30);
+  document.getElementById('save-section').style.display = 'none';
+  document.getElementById('save-confirm').style.display = 'block';
+  refreshProfileChip();
+}
+function refreshProfileChip() {
+  const profiles = JSON.parse(localStorage.getItem(PROFILE_KEY) || '[]');
+  const chip = document.getElementById('profile-chip');
+  if (profiles.length > 0) {
+    const p = profiles[0];
+    document.getElementById('pc-size').textContent = p.size;
+    document.getElementById('pc-detail').textContent = `${p.heightCm} cm · ${p.shoulderCm ? p.shoulderCm+' cm shoulders' : p.build}`;
+    chip.classList.add('visible');
+  } else {
+    chip.classList.remove('visible');
+  }
+}
+document.getElementById('save-btn').addEventListener('click', () => { if(lastMeas) saveProfile(lastMeas); });
+document.getElementById('btn-rescan').addEventListener('click', () => {
+  document.getElementById('btn-start').click();
+});
+refreshProfileChip();
+
+// ── COPY EMBED CODE ───────────────────────────────────────────────────────────
+function copyEmbedCode(el) {
+  const code = '<iframe src="https://sebastianchriste-creator.github.io/height-scan?widget=1" width="100%" height="110" frameborder="0" style="border-radius:12px;border:none;"></iframe>';
+  navigator.clipboard.writeText(code).catch(()=>{});
+  const hint = document.getElementById('embed-hint');
+  hint.textContent = '✓ Copied to clipboard!';
+  setTimeout(() => { hint.textContent = 'Tap to copy · Paste into any product page'; }, 2500);
+}
+
+// ── WIDGET MODE ───────────────────────────────────────────────────────────────
+(function initWidgetMode() {
+  if (!location.search.includes('widget')) return;
+  const saved = localStorage.getItem(PROFILE_KEY);
+  const cookie = getCookie(COOKIE_KEY);
+  let data = null;
+  try { data = saved ? JSON.parse(saved)[0] : (cookie ? JSON.parse(cookie) : null); } catch(_) {}
+  if (!data || !data.size) return; // no saved data → show normal welcome
+  document.getElementById('wb-size').textContent = data.size;
+  document.getElementById('wb-detail').textContent =
+    [data.heightCm ? data.heightCm+' cm' : '', data.shoulderCm ? data.shoulderCm+' cm shoulders' : ''].filter(Boolean).join(' · ');
+  document.getElementById('widget-bar').classList.add('visible');
+  document.getElementById('wb-rescan').addEventListener('click', () => {
+    document.getElementById('widget-bar').classList.remove('visible');
+  });
+  document.getElementById('wb-clear').addEventListener('click', () => {
+    localStorage.removeItem(PROFILE_KEY);
+    document.cookie = COOKIE_KEY+'=;expires=Thu,01 Jan 1970 00:00:00 GMT;path=/';
+    document.getElementById('widget-bar').classList.remove('visible');
+  });
+})();
+
+// ── AVATAR DRAWING ────────────────────────────────────────────────────────────
+function drawAvatar(cx, floorY, height, walkT) {
+  const s = height;
+  const damp = Math.max(0, 1 - walkT * 2);
+  const swing = Math.sin(walkT * Math.PI * 5) * damp * 0.28;
+  const bob   = Math.abs(Math.sin(walkT * Math.PI * 5)) * damp * s * 0.012;
+
+  const headR  = s * 0.115;
+  const headCY = floorY - s + headR - bob;
+  const neckH  = s * 0.030;
+  const neckW  = headR * 0.48;
+  const torsoH = s * 0.30;
+  const torsoW = s * 0.185;
+  const torsoY = headCY + headR + neckH;
+  const hipY   = torsoY + torsoH;
+  const thighH = s * 0.22;
+  const shinH  = s * 0.18;
+  const legR   = s * 0.065;
+  const kneeY  = hipY + thighH - bob;
+  const ankleY = kneeY + shinH;
+  const lHipX  = cx - torsoW * 0.52;
+  const rHipX  = cx + torsoW * 0.52;
+  const lKneeX = lHipX + Math.sin( swing) * thighH * 0.55;
+  const rKneeX = rHipX + Math.sin(-swing) * thighH * 0.55;
+  const lAnkX  = lKneeX + Math.sin( swing * 0.5) * shinH * 0.25;
+  const rAnkX  = rKneeX + Math.sin(-swing * 0.5) * shinH * 0.25;
+
+  ctx.save();
+
+  // Pants
+  ctx.fillStyle = '#1a2840';
+  drawCapsule(lHipX,hipY,lKneeX,kneeY,legR);   ctx.fill();
+  drawCapsule(rHipX,hipY,rKneeX,kneeY,legR);   ctx.fill();
+  ctx.fillStyle = '#253650';
+  drawCapsule(lKneeX,kneeY,lAnkX,ankleY,legR*0.80); ctx.fill();
+  drawCapsule(rKneeX,kneeY,rAnkX,ankleY,legR*0.80); ctx.fill();
+  // Shoes
+  ctx.fillStyle = '#111';
+  ctx.beginPath(); ctx.ellipse(lAnkX,ankleY+legR*0.45,legR*0.85,legR*0.30,-0.08,0,Math.PI*2); ctx.fill();
+  ctx.beginPath(); ctx.ellipse(rAnkX,ankleY+legR*0.45,legR*0.85,legR*0.30, 0.08,0,Math.PI*2); ctx.fill();
+
+  // Arms
+  const shoulderY = torsoY + s*0.03;
+  const armR = s*0.044;
+  const lShouX = cx - torsoW;
+  const rShouX = cx + torsoW;
+  const aswing = -swing;
+  const lElbX = lShouX + Math.sin( aswing)*s*0.07, lElbY = shoulderY + torsoH*0.44;
+  const rElbX = rShouX + Math.sin(-aswing)*s*0.07, rElbY = lElbY;
+  const lWriX  = lElbX + Math.sin( aswing*0.5)*s*0.04, wriY = lElbY + torsoH*0.35;
+  const rWriX  = rElbX + Math.sin(-aswing*0.5)*s*0.04;
+  ctx.fillStyle = '#F5C5A3';
+  drawCapsule(lShouX,shoulderY,lElbX,lElbY,armR); ctx.fill();
+  drawCapsule(rShouX,shoulderY,rElbX,rElbY,armR); ctx.fill();
+  ctx.fillStyle = '#EEAE88';
+  drawCapsule(lElbX,lElbY,lWriX,wriY,armR*0.85); ctx.fill();
+  drawCapsule(rElbX,rElbY,rWriX,wriY,armR*0.85); ctx.fill();
+  ctx.fillStyle='#F5C5A3';
+  ctx.beginPath(); ctx.arc(lWriX,wriY,armR*0.78,0,Math.PI*2); ctx.fill();
+  ctx.beginPath(); ctx.arc(rWriX,wriY,armR*0.78,0,Math.PI*2); ctx.fill();
+
+  // Torso (coral shirt — brand color!)
+  ctx.fillStyle = CORAL;
+  ctx.beginPath();
+  ctx.moveTo(cx-torsoW*1.06, torsoY+s*0.01);
+  ctx.lineTo(cx+torsoW*1.06, torsoY+s*0.01);
+  ctx.lineTo(cx+torsoW*0.88, hipY+legR*0.5);
+  ctx.lineTo(cx-torsoW*0.88, hipY+legR*0.5);
+  ctx.closePath(); ctx.fill();
+  ctx.fillStyle='rgba(0,0,0,0.07)';
+  ctx.beginPath();
+  ctx.moveTo(cx-torsoW*0.36, torsoY+s*0.01);
+  ctx.lineTo(cx+torsoW*0.36, torsoY+s*0.01);
+  ctx.lineTo(cx, torsoY+torsoH*0.12);
+  ctx.closePath(); ctx.fill();
+
+  // Neck
+  ctx.fillStyle='#F5C5A3';
+  ctx.beginPath(); ctx.roundRect(cx-neckW, headCY+headR-2, neckW*2, neckH+4, 3); ctx.fill();
+
+  // Ears
+  ctx.fillStyle='#F5C5A3';
+  ctx.beginPath(); ctx.ellipse(cx-headR*0.93,headCY+headR*0.08,headR*0.13,headR*0.18,0,0,Math.PI*2); ctx.fill();
+  ctx.beginPath(); ctx.ellipse(cx+headR*0.93,headCY+headR*0.08,headR*0.13,headR*0.18,0,0,Math.PI*2); ctx.fill();
+
+  // Head
+  ctx.fillStyle='#F5C5A3';
+  ctx.save(); ctx.shadowColor='rgba(0,0,0,0.12)'; ctx.shadowBlur=8;
+  ctx.beginPath(); ctx.arc(cx,headCY,headR,0,Math.PI*2); ctx.fill(); ctx.restore();
+
+  // Hair
+  ctx.fillStyle='#3a2a1a';
+  ctx.beginPath(); ctx.arc(cx,headCY,headR,Math.PI,0); ctx.fill();
+  ctx.beginPath(); ctx.ellipse(cx,headCY-headR*0.06,headR*1.01,headR*0.50,0,Math.PI*0.06,Math.PI*0.94); ctx.fill();
+
+  // Face
+  const eyeY = headCY + headR*0.13;
+  const eyeR = headR*0.112;
+  // eyebrows
+  ctx.strokeStyle='#3a2a1a'; ctx.lineWidth=headR*0.09; ctx.lineCap='round';
+  ctx.beginPath(); ctx.arc(cx-headR*0.30, eyeY-headR*0.36, headR*0.22, Math.PI+0.4,-0.4); ctx.stroke();
+  ctx.beginPath(); ctx.arc(cx+headR*0.30, eyeY-headR*0.36, headR*0.22, Math.PI+0.4,-0.4); ctx.stroke();
+  // eyes white
+  ctx.fillStyle='#fff';
+  ctx.beginPath(); ctx.ellipse(cx-headR*0.30,eyeY,eyeR*1.25,eyeR,0,0,Math.PI*2); ctx.fill();
+  ctx.beginPath(); ctx.ellipse(cx+headR*0.30,eyeY,eyeR*1.25,eyeR,0,0,Math.PI*2); ctx.fill();
+  // iris
+  ctx.fillStyle='#3a2a1a';
+  ctx.beginPath(); ctx.arc(cx-headR*0.30,eyeY+eyeR*0.1,eyeR*0.72,0,Math.PI*2); ctx.fill();
+  ctx.beginPath(); ctx.arc(cx+headR*0.30,eyeY+eyeR*0.1,eyeR*0.72,0,Math.PI*2); ctx.fill();
+  // eye shine
+  ctx.fillStyle='rgba(255,255,255,0.9)';
+  ctx.beginPath(); ctx.arc(cx-headR*0.33,eyeY-eyeR*0.08,eyeR*0.28,0,Math.PI*2); ctx.fill();
+  ctx.beginPath(); ctx.arc(cx+headR*0.27,eyeY-eyeR*0.08,eyeR*0.28,0,Math.PI*2); ctx.fill();
+  // nose
+  ctx.fillStyle='#e8a888';
+  ctx.beginPath(); ctx.arc(cx,headCY+headR*0.32,headR*0.075,0,Math.PI*2); ctx.fill();
+  // smile
+  ctx.strokeStyle='#c07060'; ctx.lineWidth=headR*0.11;
+  ctx.beginPath(); ctx.arc(cx,headCY+headR*0.30,headR*0.30,0.18,Math.PI-0.18); ctx.stroke();
+
+  ctx.restore();
 }
 
 document.getElementById('btn-demo').addEventListener('click', startDemo);
