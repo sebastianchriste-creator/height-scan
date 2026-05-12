@@ -1666,123 +1666,170 @@ function copyEmbedCode(el) {
 // ── AVATAR DRAWING ────────────────────────────────────────────────────────────
 function drawAvatar(cx, floorY, height, walkT) {
   const s = height;
-  const damp = Math.max(0, 1 - walkT * 2);
-  const swing = Math.sin(walkT * Math.PI * 5) * damp * 0.28;
-  const bob   = Math.abs(Math.sin(walkT * Math.PI * 5)) * damp * s * 0.012;
+  const damp   = Math.max(0, 1 - walkT * 2);
+  const swing  = Math.sin(walkT * Math.PI * 5) * damp * 0.24;
+  const bob    = Math.abs(Math.sin(walkT * Math.PI * 5)) * damp * s * 0.010;
 
-  const headR  = s * 0.115;
+  // ── Layout ────────────────────────────────────────────────────────
+  const headR  = s * 0.120;
   const headCY = floorY - s + headR - bob;
-  const neckH  = s * 0.030;
-  const neckW  = headR * 0.48;
-  const torsoH = s * 0.30;
-  const torsoW = s * 0.185;
+  const neckH  = s * 0.028;
+  const neckW  = headR * 0.44;
+  const hoodW  = s * 0.210;   // hoodie is wider (has hood shoulder bump)
+  const torsoH = s * 0.310;
   const torsoY = headCY + headR + neckH;
   const hipY   = torsoY + torsoH;
-  const thighH = s * 0.22;
-  const shinH  = s * 0.18;
-  const legR   = s * 0.065;
+  const thighH = s * 0.225;
+  const shinH  = s * 0.185;
+  const legR   = s * 0.066;
   const kneeY  = hipY + thighH - bob;
   const ankleY = kneeY + shinH;
-  const lHipX  = cx - torsoW * 0.52;
-  const rHipX  = cx + torsoW * 0.52;
-  const lKneeX = lHipX + Math.sin( swing) * thighH * 0.55;
-  const rKneeX = rHipX + Math.sin(-swing) * thighH * 0.55;
-  const lAnkX  = lKneeX + Math.sin( swing * 0.5) * shinH * 0.25;
-  const rAnkX  = rKneeX + Math.sin(-swing * 0.5) * shinH * 0.25;
+  const lHipX  = cx - hoodW * 0.40;
+  const rHipX  = cx + hoodW * 0.40;
+  const lKneeX = lHipX + Math.sin( swing) * thighH * 0.52;
+  const rKneeX = rHipX + Math.sin(-swing) * thighH * 0.52;
+  const lAnkX  = lKneeX + Math.sin( swing * 0.45) * shinH * 0.22;
+  const rAnkX  = rKneeX + Math.sin(-swing * 0.45) * shinH * 0.22;
 
   ctx.save();
 
-  // Pants
-  ctx.fillStyle = '#1a2840';
-  drawCapsule(lHipX,hipY,lKneeX,kneeY,legR);   ctx.fill();
-  drawCapsule(rHipX,hipY,rKneeX,kneeY,legR);   ctx.fill();
-  ctx.fillStyle = '#253650';
-  drawCapsule(lKneeX,kneeY,lAnkX,ankleY,legR*0.80); ctx.fill();
-  drawCapsule(rKneeX,kneeY,rAnkX,ankleY,legR*0.80); ctx.fill();
-  // Shoes
-  ctx.fillStyle = '#111';
-  ctx.beginPath(); ctx.ellipse(lAnkX,ankleY+legR*0.45,legR*0.85,legR*0.30,-0.08,0,Math.PI*2); ctx.fill();
-  ctx.beginPath(); ctx.ellipse(rAnkX,ankleY+legR*0.45,legR*0.85,legR*0.30, 0.08,0,Math.PI*2); ctx.fill();
+  // ── JEANS ─────────────────────────────────────────────────────────
+  ctx.fillStyle = '#2d3e6e';
+  drawCapsule(lHipX, hipY, lKneeX, kneeY, legR);   ctx.fill();
+  drawCapsule(rHipX, hipY, rKneeX, kneeY, legR);   ctx.fill();
+  ctx.fillStyle = '#263564';
+  drawCapsule(lKneeX, kneeY, lAnkX, ankleY, legR*0.82); ctx.fill();
+  drawCapsule(rKneeX, kneeY, rAnkX, ankleY, legR*0.82); ctx.fill();
 
-  // Arms
-  const shoulderY = torsoY + s*0.03;
-  const armR = s*0.044;
-  const lShouX = cx - torsoW;
-  const rShouX = cx + torsoW;
-  const aswing = -swing;
-  const lElbX = lShouX + Math.sin( aswing)*s*0.07, lElbY = shoulderY + torsoH*0.44;
-  const rElbX = rShouX + Math.sin(-aswing)*s*0.07, rElbY = lElbY;
-  const lWriX  = lElbX + Math.sin( aswing*0.5)*s*0.04, wriY = lElbY + torsoH*0.35;
-  const rWriX  = rElbX + Math.sin(-aswing*0.5)*s*0.04;
+  // ── WHITE SNEAKERS ────────────────────────────────────────────────
+  ctx.fillStyle = '#eeeeee';
+  ctx.beginPath(); ctx.ellipse(lAnkX-legR*.08, ankleY+legR*.48, legR*1.0, legR*0.36, -0.08, 0, Math.PI*2); ctx.fill();
+  ctx.beginPath(); ctx.ellipse(rAnkX+legR*.08, ankleY+legR*.48, legR*1.0, legR*0.36,  0.08, 0, Math.PI*2); ctx.fill();
+  ctx.fillStyle = '#cccccc';
+  ctx.beginPath(); ctx.ellipse(lAnkX-legR*.08, ankleY+legR*.62, legR*1.0, legR*0.16, -0.08, 0, Math.PI*2); ctx.fill();
+  ctx.beginPath(); ctx.ellipse(rAnkX+legR*.08, ankleY+legR*.62, legR*1.0, legR*0.16,  0.08, 0, Math.PI*2); ctx.fill();
+
+  // ── HOODIE ARMS ───────────────────────────────────────────────────
+  const aswing  = -swing;
+  const shldrY  = torsoY + s * 0.022;
+  const elbY    = shldrY + torsoH * 0.46;
+  const wriY    = elbY   + torsoH * 0.33;
+  const armR    = s * 0.054;
+  const lShouX  = cx - hoodW;
+  const rShouX  = cx + hoodW;
+  const lElbX   = lShouX + Math.sin( aswing) * s * 0.065;
+  const rElbX   = rShouX + Math.sin(-aswing) * s * 0.065;
+  const lWriX   = lElbX  + Math.sin( aswing * 0.5) * s * 0.038;
+  const rWriX   = rElbX  + Math.sin(-aswing * 0.5) * s * 0.038;
+
+  ctx.fillStyle = CORAL;
+  drawCapsule(lShouX, shldrY, lElbX, elbY, armR); ctx.fill();
+  drawCapsule(rShouX, shldrY, rElbX, elbY, armR); ctx.fill();
+  ctx.fillStyle = '#d4503c';   // slightly darker sleeve cuff
+  drawCapsule(lElbX, elbY, lWriX, wriY, armR*0.84); ctx.fill();
+  drawCapsule(rElbX, elbY, rWriX, wriY, armR*0.84); ctx.fill();
+  // Hands (skin)
   ctx.fillStyle = '#F5C5A3';
-  drawCapsule(lShouX,shoulderY,lElbX,lElbY,armR); ctx.fill();
-  drawCapsule(rShouX,shoulderY,rElbX,rElbY,armR); ctx.fill();
-  ctx.fillStyle = '#EEAE88';
-  drawCapsule(lElbX,lElbY,lWriX,wriY,armR*0.85); ctx.fill();
-  drawCapsule(rElbX,rElbY,rWriX,wriY,armR*0.85); ctx.fill();
-  ctx.fillStyle='#F5C5A3';
-  ctx.beginPath(); ctx.arc(lWriX,wriY,armR*0.78,0,Math.PI*2); ctx.fill();
-  ctx.beginPath(); ctx.arc(rWriX,wriY,armR*0.78,0,Math.PI*2); ctx.fill();
+  ctx.beginPath(); ctx.arc(lWriX, wriY, armR*0.80, 0, Math.PI*2); ctx.fill();
+  ctx.beginPath(); ctx.arc(rWriX, wriY, armR*0.80, 0, Math.PI*2); ctx.fill();
 
-  // Torso (coral shirt — brand color!)
+  // ── HOODIE BODY ───────────────────────────────────────────────────
   ctx.fillStyle = CORAL;
   ctx.beginPath();
-  ctx.moveTo(cx-torsoW*1.06, torsoY+s*0.01);
-  ctx.lineTo(cx+torsoW*1.06, torsoY+s*0.01);
-  ctx.lineTo(cx+torsoW*0.88, hipY+legR*0.5);
-  ctx.lineTo(cx-torsoW*0.88, hipY+legR*0.5);
+  ctx.moveTo(cx - hoodW*1.02, torsoY + s*0.01);
+  ctx.lineTo(cx + hoodW*1.02, torsoY + s*0.01);
+  ctx.lineTo(cx + hoodW*0.88, hipY + legR*0.45);
+  ctx.lineTo(cx - hoodW*0.88, hipY + legR*0.45);
   ctx.closePath(); ctx.fill();
-  ctx.fillStyle='rgba(0,0,0,0.07)';
+
+  // Hood arc behind neck (darker coral)
+  ctx.fillStyle = '#d4503c';
+  ctx.beginPath(); ctx.arc(cx, torsoY + s*0.01, hoodW*0.60, Math.PI, 0); ctx.fill();
+  ctx.fillStyle = CORAL;
+  ctx.beginPath(); ctx.arc(cx, torsoY + s*0.01, hoodW*0.46, Math.PI, 0); ctx.fill();
+
+  // Kangaroo pocket
+  ctx.fillStyle = '#d4503c';
   ctx.beginPath();
-  ctx.moveTo(cx-torsoW*0.36, torsoY+s*0.01);
-  ctx.lineTo(cx+torsoW*0.36, torsoY+s*0.01);
-  ctx.lineTo(cx, torsoY+torsoH*0.12);
-  ctx.closePath(); ctx.fill();
+  ctx.roundRect(cx - hoodW*0.46, hipY - torsoH*0.26, hoodW*0.92, torsoH*0.20, [0, 0, 8, 8]);
+  ctx.fill();
 
-  // Neck
-  ctx.fillStyle='#F5C5A3';
-  ctx.beginPath(); ctx.roundRect(cx-neckW, headCY+headR-2, neckW*2, neckH+4, 3); ctx.fill();
+  // ── NECK ──────────────────────────────────────────────────────────
+  ctx.fillStyle = '#F5C5A3';
+  ctx.beginPath(); ctx.roundRect(cx-neckW, headCY+headR-2, neckW*2, neckH+4, 4); ctx.fill();
 
-  // Ears
-  ctx.fillStyle='#F5C5A3';
-  ctx.beginPath(); ctx.ellipse(cx-headR*0.93,headCY+headR*0.08,headR*0.13,headR*0.18,0,0,Math.PI*2); ctx.fill();
-  ctx.beginPath(); ctx.ellipse(cx+headR*0.93,headCY+headR*0.08,headR*0.13,headR*0.18,0,0,Math.PI*2); ctx.fill();
+  // ── EARS ──────────────────────────────────────────────────────────
+  ctx.fillStyle = '#f0b090';
+  ctx.beginPath(); ctx.ellipse(cx-headR*0.93, headCY+headR*0.06, headR*0.13, headR*0.17, 0, 0, Math.PI*2); ctx.fill();
+  ctx.beginPath(); ctx.ellipse(cx+headR*0.93, headCY+headR*0.06, headR*0.13, headR*0.17, 0, 0, Math.PI*2); ctx.fill();
 
-  // Head
-  ctx.fillStyle='#F5C5A3';
-  ctx.save(); ctx.shadowColor='rgba(0,0,0,0.12)'; ctx.shadowBlur=8;
-  ctx.beginPath(); ctx.arc(cx,headCY,headR,0,Math.PI*2); ctx.fill(); ctx.restore();
+  // ── HEAD (flat design, slightly oval) ─────────────────────────────
+  ctx.fillStyle = '#F5C5A3';
+  ctx.save(); ctx.shadowColor = 'rgba(0,0,0,0.12)'; ctx.shadowBlur = 8;
+  ctx.beginPath(); ctx.ellipse(cx, headCY, headR*0.91, headR, 0, 0, Math.PI*2); ctx.fill();
+  ctx.restore();
 
-  // Hair
-  ctx.fillStyle='#3a2a1a';
-  ctx.beginPath(); ctx.arc(cx,headCY,headR,Math.PI,0); ctx.fill();
-  ctx.beginPath(); ctx.ellipse(cx,headCY-headR*0.06,headR*1.01,headR*0.50,0,Math.PI*0.06,Math.PI*0.94); ctx.fill();
+  // ── HAIR (dark brown, flat cap + side quiff) ──────────────────────
+  ctx.fillStyle = '#3d2b1a';
+  ctx.beginPath(); ctx.arc(cx, headCY, headR, Math.PI, 0); ctx.fill();
+  ctx.beginPath(); ctx.ellipse(cx, headCY-headR*0.04, headR*0.92, headR*0.50, 0, Math.PI*0.07, Math.PI*0.93); ctx.fill();
+  // quiff bump left-of-center
+  ctx.beginPath(); ctx.ellipse(cx-headR*0.18, headCY-headR*0.88, headR*0.52, headR*0.36, -0.28, 0, Math.PI*2); ctx.fill();
 
-  // Face
-  const eyeY = headCY + headR*0.13;
-  const eyeR = headR*0.112;
-  // eyebrows
-  ctx.strokeStyle='#3a2a1a'; ctx.lineWidth=headR*0.09; ctx.lineCap='round';
-  ctx.beginPath(); ctx.arc(cx-headR*0.30, eyeY-headR*0.36, headR*0.22, Math.PI+0.4,-0.4); ctx.stroke();
-  ctx.beginPath(); ctx.arc(cx+headR*0.30, eyeY-headR*0.36, headR*0.22, Math.PI+0.4,-0.4); ctx.stroke();
-  // eyes white
-  ctx.fillStyle='#fff';
-  ctx.beginPath(); ctx.ellipse(cx-headR*0.30,eyeY,eyeR*1.25,eyeR,0,0,Math.PI*2); ctx.fill();
-  ctx.beginPath(); ctx.ellipse(cx+headR*0.30,eyeY,eyeR*1.25,eyeR,0,0,Math.PI*2); ctx.fill();
-  // iris
-  ctx.fillStyle='#3a2a1a';
-  ctx.beginPath(); ctx.arc(cx-headR*0.30,eyeY+eyeR*0.1,eyeR*0.72,0,Math.PI*2); ctx.fill();
-  ctx.beginPath(); ctx.arc(cx+headR*0.30,eyeY+eyeR*0.1,eyeR*0.72,0,Math.PI*2); ctx.fill();
-  // eye shine
-  ctx.fillStyle='rgba(255,255,255,0.9)';
-  ctx.beginPath(); ctx.arc(cx-headR*0.33,eyeY-eyeR*0.08,eyeR*0.28,0,Math.PI*2); ctx.fill();
-  ctx.beginPath(); ctx.arc(cx+headR*0.27,eyeY-eyeR*0.08,eyeR*0.28,0,Math.PI*2); ctx.fill();
-  // nose
-  ctx.fillStyle='#e8a888';
-  ctx.beginPath(); ctx.arc(cx,headCY+headR*0.32,headR*0.075,0,Math.PI*2); ctx.fill();
-  // smile
-  ctx.strokeStyle='#c07060'; ctx.lineWidth=headR*0.11;
-  ctx.beginPath(); ctx.arc(cx,headCY+headR*0.30,headR*0.30,0.18,Math.PI-0.18); ctx.stroke();
+  // ── FACE ──────────────────────────────────────────────────────────
+  const eyeBaseY = headCY + headR*0.10;
+  const lEyeX    = cx - headR*0.30;
+  const rEyeX    = cx + headR*0.30;
+  const eH       = headR*0.20;   // eye height
+  const eW       = headR*0.22;   // eye half-width
+  const glassLW  = headR*0.28;   // glasses lens half-width
+  const glassLH  = headR*0.24;   // glasses lens half-height
+
+  // LEFT EYE — open ──────────────────────────────────────────────────
+  ctx.fillStyle = '#fff';
+  ctx.beginPath(); ctx.ellipse(lEyeX, eyeBaseY, eW*0.80, eH*0.88, 0, 0, Math.PI*2); ctx.fill();
+  ctx.fillStyle = '#5a4030';   // brown iris
+  ctx.beginPath(); ctx.arc(lEyeX, eyeBaseY+eH*0.10, eH*0.48, 0, Math.PI*2); ctx.fill();
+  ctx.fillStyle = '#1a1a1a';   // pupil
+  ctx.beginPath(); ctx.arc(lEyeX, eyeBaseY+eH*0.10, eH*0.28, 0, Math.PI*2); ctx.fill();
+  ctx.fillStyle = 'rgba(255,255,255,0.90)'; // shine
+  ctx.beginPath(); ctx.arc(lEyeX-eH*0.12, eyeBaseY-eH*0.08, eH*0.13, 0, Math.PI*2); ctx.fill();
+
+  // RIGHT EYE — winking ──────────────────────────────────────────────
+  ctx.strokeStyle = '#2a1a10'; ctx.lineWidth = headR*0.082; ctx.lineCap = 'round';
+  ctx.beginPath(); ctx.arc(rEyeX, eyeBaseY+eH*0.15, eH*0.60, Math.PI+0.28, -0.28); ctx.stroke();
+  // wink lashes
+  ctx.lineWidth = headR*0.062;
+  [[rEyeX-eH*0.32, -0.55],[rEyeX, -0.68],[rEyeX+eH*0.32, -0.55]].forEach(([lx, dy])=>{
+    ctx.beginPath(); ctx.moveTo(lx, eyeBaseY-eH*0.28); ctx.lineTo(lx, eyeBaseY+dy*eH); ctx.stroke();
+  });
+
+  // GLASSES (thick black frames, round lenses) ───────────────────────
+  ctx.strokeStyle = '#1a1a1a'; ctx.lineWidth = headR*0.092; ctx.lineCap = 'round'; ctx.lineJoin = 'round';
+  // left lens
+  ctx.beginPath(); ctx.roundRect(lEyeX-glassLW, eyeBaseY-glassLH, glassLW*2, glassLH*2, glassLH*0.55); ctx.stroke();
+  // right lens
+  ctx.beginPath(); ctx.roundRect(rEyeX-glassLW, eyeBaseY-glassLH, glassLW*2, glassLH*2, glassLH*0.55); ctx.stroke();
+  // bridge
+  ctx.beginPath(); ctx.moveTo(lEyeX+glassLW, eyeBaseY-glassLH*0.18); ctx.lineTo(rEyeX-glassLW, eyeBaseY-glassLH*0.18); ctx.stroke();
+  // temples
+  ctx.beginPath(); ctx.moveTo(lEyeX-glassLW, eyeBaseY-glassLH*0.38); ctx.lineTo(cx-headR*0.94, eyeBaseY-glassLH*0.52); ctx.stroke();
+  ctx.beginPath(); ctx.moveTo(rEyeX+glassLW, eyeBaseY-glassLH*0.38); ctx.lineTo(cx+headR*0.94, eyeBaseY-glassLH*0.52); ctx.stroke();
+
+  // NOSE (flat dot) ──────────────────────────────────────────────────
+  ctx.fillStyle = '#e8a080';
+  ctx.beginPath(); ctx.arc(cx, headCY+headR*0.40, headR*0.072, 0, Math.PI*2); ctx.fill();
+
+  // MOUTH — open happy with teeth ────────────────────────────────────
+  ctx.fillStyle = '#c06050';
+  ctx.beginPath(); ctx.ellipse(cx, headCY+headR*0.60, headR*0.24, headR*0.15, 0, 0, Math.PI); ctx.fill();
+  ctx.fillStyle = '#fff';   // teeth
+  ctx.beginPath(); ctx.ellipse(cx, headCY+headR*0.56, headR*0.19, headR*0.068, 0, 0, Math.PI); ctx.fill();
+
+  // Cheek blush ──────────────────────────────────────────────────────
+  ctx.fillStyle = 'rgba(240,140,110,0.28)';
+  ctx.beginPath(); ctx.ellipse(cx-headR*0.65, headCY+headR*0.50, headR*0.22, headR*0.13, 0, 0, Math.PI*2); ctx.fill();
+  ctx.beginPath(); ctx.ellipse(cx+headR*0.65, headCY+headR*0.50, headR*0.22, headR*0.13, 0, 0, Math.PI*2); ctx.fill();
 
   ctx.restore();
 }
