@@ -1203,6 +1203,196 @@ function drawDemoPaper(g) {
   ctx.restore();
 }
 
+// ── DEMO TUTORIAL ANIMATION ───────────────────────────────────────────────────
+const TUTORIAL_DURATION = 7500;
+
+function drawTutScene1(vx, vy, vw, vh, t) {
+  // Wall scene: paper being taped up
+  ctx.fillStyle='#d8d4cd'; ctx.fillRect(vx,vy,vw,vh);
+  const floorY=vy+vh*0.78;
+  ctx.fillStyle='#b8a990'; ctx.fillRect(vx,floorY,vw,vh-(floorY-vy));
+  ctx.fillStyle='#9a8e7e'; ctx.fillRect(vx,floorY-5,vw,5);
+
+  const px=vx+vw*0.52, py=vy+vh*0.12, pw=vw*0.16, ph=pw*1.414;
+  const paperA=Math.min(t*2.5,1), drop=(1-paperA)*(-ph*0.55);
+  ctx.save(); ctx.globalAlpha=paperA;
+  ctx.shadowColor='rgba(0,0,0,0.2)'; ctx.shadowBlur=10; ctx.shadowOffsetY=3;
+  ctx.fillStyle='#f8f8f4'; ctx.beginPath(); ctx.roundRect(px,py+drop,pw,ph,2); ctx.fill();
+  ctx.restore();
+
+  const tapeA=Math.max(0,Math.min((t-0.35)*4,1));
+  if(tapeA>0){
+    ctx.save(); ctx.globalAlpha=tapeA*0.7; ctx.fillStyle='rgba(190,225,255,0.85)';
+    [[px+pw*0.15,py+3+drop,-0.3],[px+pw*0.82,py+3+drop,0.3]].forEach(([tx,ty,r])=>{
+      ctx.save(); ctx.translate(tx,ty); ctx.rotate(r); ctx.fillRect(-13,-4,26,8); ctx.restore();
+    }); ctx.restore();
+  }
+
+  const handA=Math.max(0,1-t*2.4);
+  if(handA>0){
+    ctx.save(); ctx.globalAlpha=handA; ctx.fillStyle='#c8956c';
+    const hx=px+pw*0.5, hy=py+ph*0.05+drop;
+    ctx.beginPath(); ctx.roundRect(hx-5,hy-50,10,55,5); ctx.fill();
+    ctx.beginPath(); ctx.arc(hx,hy,11,0,Math.PI*2); ctx.fill();
+    ctx.restore();
+  }
+
+  const annA=Math.max(0,Math.min((t-0.5)*3,1));
+  if(annA>0){
+    ctx.save(); ctx.globalAlpha=annA;
+    const ax=px-26, ay1=vy+vh*0.04, ay2=py+ph*0.15+drop;
+    ctx.strokeStyle=CORAL; ctx.lineWidth=1.8; ctx.setLineDash([5,4]);
+    ctx.beginPath(); ctx.moveTo(ax,ay1); ctx.lineTo(ax,ay2); ctx.stroke(); ctx.setLineDash([]);
+    ctx.beginPath(); ctx.moveTo(ax-5,ay1+7); ctx.lineTo(ax,ay1); ctx.lineTo(ax+5,ay1+7); ctx.stroke();
+    ctx.fillStyle=CORAL; ctx.font='bold 9px Inter,sans-serif'; ctx.textAlign='center';
+    ctx.fillText('head',ax,ay1-6); ctx.fillText('height',ax,ay1+5);
+    ctx.restore();
+  }
+}
+
+function drawTutScene2(vx, vy, vw, vh, t) {
+  // Phone being placed on a chair/shelf
+  ctx.fillStyle='#d8d4cd'; ctx.fillRect(vx,vy,vw,vh);
+  const floorY=vy+vh*0.80;
+  ctx.fillStyle='#b8a990'; ctx.fillRect(vx,floorY,vw,vh-(floorY-vy));
+  ctx.fillStyle='#9a8e7e'; ctx.fillRect(vx,floorY-5,vw,5);
+
+  const ppx=vx+vw*0.78, ppy=vy+vh*0.16, ppw=vw*0.08;
+  ctx.fillStyle='#f8f8f4'; ctx.beginPath(); ctx.roundRect(ppx,ppy,ppw,ppw*1.414,1); ctx.fill();
+
+  const chairX=vx+vw*0.10, seatY=vy+vh*0.55;
+  ctx.fillStyle='#7a6a52'; ctx.beginPath(); ctx.roundRect(chairX,seatY,vw*0.21,9,3); ctx.fill();
+  ctx.strokeStyle='#7a6a52'; ctx.lineWidth=6; ctx.lineCap='round';
+  [[chairX+vw*0.03,seatY+9],[chairX+vw*0.18,seatY+9]].forEach(([lx,ly])=>{
+    ctx.beginPath(); ctx.moveTo(lx,ly); ctx.lineTo(lx,floorY); ctx.stroke();
+  });
+
+  const targetX=chairX+vw*0.07;
+  const phoneX=(vx-60)+(targetX-(vx-60))*Math.min(t*2.2,1);
+  const phoneY=seatY-58, phW=28, phH=54;
+  ctx.save(); ctx.shadowColor='rgba(0,0,0,0.35)'; ctx.shadowBlur=10; ctx.shadowOffsetY=3;
+  ctx.fillStyle='#1a1a1a'; ctx.beginPath(); ctx.roundRect(phoneX,phoneY,phW,phH,6); ctx.fill();
+  ctx.restore();
+  ctx.fillStyle='#0d1b2a'; ctx.beginPath(); ctx.roundRect(phoneX+2,phoneY+4,phW-4,phH-8,4); ctx.fill();
+  ctx.fillStyle='#333'; ctx.beginPath(); ctx.arc(phoneX+phW/2,phoneY+6,2.5,0,Math.PI*2); ctx.fill();
+
+  if(t>0.45){
+    ctx.save(); ctx.globalAlpha=Math.min((t-0.45)*3,1);
+    ctx.strokeStyle=CORAL; ctx.lineWidth=1.2;
+    ctx.strokeRect(phoneX+3,phoneY+9,phW-6,phH*0.48); ctx.restore();
+  }
+  if(t>0.55){
+    ctx.save(); ctx.globalAlpha=Math.min((t-0.55)*3,1);
+    const ay=floorY+14;
+    ctx.strokeStyle='rgba(255,255,255,0.5)'; ctx.lineWidth=1.5; ctx.setLineDash([5,4]);
+    ctx.beginPath(); ctx.moveTo(phoneX+phW/2,ay); ctx.lineTo(ppx+ppw/2,ay); ctx.stroke(); ctx.setLineDash([]);
+    ctx.fillStyle='rgba(255,255,255,0.8)'; ctx.font='bold 10px Inter,sans-serif'; ctx.textAlign='center';
+    ctx.fillText('2 – 3 m',(phoneX+phW/2+ppx+ppw/2)/2,ay-6);
+    ctx.restore();
+  }
+}
+
+function drawTutScene3(vx, vy, vw, vh, t) {
+  // Person stepping into frame next to paper
+  ctx.fillStyle='#d8d4cd'; ctx.fillRect(vx,vy,vw,vh);
+  const floorY=vy+vh*0.82;
+  ctx.fillStyle='#b8a990'; ctx.fillRect(vx,floorY,vw,vh-(floorY-vy));
+  ctx.fillStyle='#9a8e7e'; ctx.fillRect(vx,floorY-5,vw,5);
+
+  const ppx=vx+vw*0.58, ppy=vy+vh*0.10, ppw=vw*0.12;
+  ctx.save(); ctx.shadowColor='rgba(0,0,0,0.12)'; ctx.shadowBlur=6;
+  ctx.fillStyle='#f8f8f4'; ctx.beginPath(); ctx.roundRect(ppx,ppy,ppw,ppw*1.414,2); ctx.fill(); ctx.restore();
+
+  const personH=vh*0.68, personTarget=vx+vw*0.52, personStart=vx-70;
+  const personX=personStart+(personTarget-personStart)*Math.min(t*1.9,1);
+  const personY=floorY-personH, pw=personH*0.30;
+  const bob=Math.sin(t*Math.PI*7)*3*(1-Math.min(t*2.2,1));
+
+  ctx.fillStyle='rgba(45,45,65,0.88)';
+  const hr=pw*0.33;
+  ctx.beginPath(); ctx.arc(personX,personY+hr+bob,hr,0,Math.PI*2); ctx.fill();
+  const sy=personY+hr*2+4+bob, hy2=sy+personH*0.35;
+  ctx.beginPath(); ctx.moveTo(personX-pw*0.42,sy); ctx.lineTo(personX+pw*0.42,sy);
+  ctx.lineTo(personX+pw*0.32,hy2); ctx.lineTo(personX-pw*0.32,hy2); ctx.closePath(); ctx.fill();
+
+  ctx.strokeStyle='rgba(45,45,65,0.88)'; ctx.lineWidth=pw*0.40; ctx.lineCap='round';
+  const armSwing=Math.sin(t*Math.PI*7)*0.18*(1-Math.min(t*2.2,1));
+  const elbowY=sy+personH*0.2;
+  ctx.beginPath(); ctx.moveTo(personX-pw*0.38,sy); ctx.lineTo(personX-pw*0.5+Math.sin(armSwing)*25,elbowY); ctx.stroke();
+  ctx.beginPath(); ctx.moveTo(personX+pw*0.38,sy); ctx.lineTo(personX+pw*0.5-Math.sin(armSwing)*25,elbowY); ctx.stroke();
+
+  ctx.lineWidth=pw*0.44;
+  const kny=hy2+personH*0.23, ank=kny+personH*0.21;
+  const legSwing=Math.sin(t*Math.PI*7)*0.18*(1-Math.min(t*2.2,1));
+  const lkx=personX-pw*0.15+Math.sin(legSwing)*22;
+  ctx.beginPath(); ctx.moveTo(personX-pw*0.22,hy2); ctx.lineTo(lkx,kny); ctx.lineTo(lkx,ank); ctx.stroke();
+  const rkx=personX+pw*0.15-Math.sin(legSwing)*22;
+  ctx.beginPath(); ctx.moveTo(personX+pw*0.22,hy2); ctx.lineTo(rkx,kny); ctx.lineTo(rkx,ank); ctx.stroke();
+
+  if(t>0.58){
+    ctx.save(); ctx.globalAlpha=Math.min((t-0.58)*3.5,0.85);
+    ctx.strokeStyle=CORAL; ctx.lineWidth=2.5; ctx.shadowColor=CORAL; ctx.shadowBlur=14;
+    ctx.beginPath(); ctx.roundRect(personX-pw*0.6,personY-8,pw*1.2,personH+16,10); ctx.stroke();
+    ctx.restore();
+  }
+  if(t>0.80){
+    ctx.save(); ctx.globalAlpha=Math.min((t-0.80)*5,1);
+    ctx.fillStyle=CORAL; ctx.font='700 13px Inter,sans-serif'; ctx.textAlign='center';
+    ctx.fillText('Scan starting…',vx+vw*0.5,vy+vh*0.93);
+    ctx.restore();
+  }
+}
+
+function drawTutorial(elapsed) {
+  const W=oc.width, H=oc.height;
+  const SCENE_DUR=2500;
+  const sceneIdx=Math.min(Math.floor(elapsed/SCENE_DUR),2);
+  const sceneT=Math.min((elapsed%SCENE_DUR)/SCENE_DUR,1);
+
+  ctx.fillStyle='#1e1a17'; ctx.fillRect(0,0,W,H);
+
+  const top=instrCardH();
+  const VX=W*0.05, VY=top+8, VW=W*0.90, VH=H*0.58;
+
+  ctx.save();
+  ctx.beginPath(); ctx.roundRect(VX,VY,VW,VH,14); ctx.clip();
+  if(sceneIdx===0) drawTutScene1(VX,VY,VW,VH,sceneT);
+  else if(sceneIdx===1) drawTutScene2(VX,VY,VW,VH,sceneT);
+  else drawTutScene3(VX,VY,VW,VH,sceneT);
+  ctx.restore();
+
+  ctx.save(); ctx.strokeStyle='rgba(255,255,255,0.18)'; ctx.lineWidth=1.5;
+  ctx.roundRect(VX,VY,VW,VH,14); ctx.stroke(); ctx.restore();
+
+  ctx.save(); ctx.fillStyle='#EDD94E'; ctx.font='700 9px Inter,sans-serif';
+  const badge='HOW IT WORKS';
+  const bw=ctx.measureText(badge).width+14;
+  ctx.beginPath(); ctx.roundRect(VX+10,VY+10,bw,20,4); ctx.fill();
+  ctx.fillStyle='#2A2A2A'; ctx.textAlign='left';
+  ctx.fillText(badge,VX+17,VY+23); ctx.restore();
+
+  const steps=[
+    {n:'1',title:'Tape A4 paper to the wall',sub:'At roughly head height'},
+    {n:'2',title:'Set your phone 2–3 m away',sub:'On a shelf, chair, or lean it against something'},
+    {n:'3',title:'Step back and stand tall',sub:'Next to the paper — scan starts automatically'},
+  ];
+  const step=steps[sceneIdx];
+  const textY=VY+VH+22;
+  ctx.textAlign='center';
+  ctx.fillStyle=CORAL; ctx.font='600 10px Inter,sans-serif'; ctx.fillText('STEP '+step.n+' OF 3',W/2,textY);
+  ctx.fillStyle='rgba(255,255,255,0.92)'; ctx.font='700 15px Inter,sans-serif'; ctx.fillText(step.title,W/2,textY+20);
+  ctx.fillStyle='rgba(255,255,255,0.50)'; ctx.font='400 12px Inter,sans-serif'; ctx.fillText(step.sub,W/2,textY+38);
+
+  const barY=H-38, barX=W*0.12, barW=W*0.76;
+  ctx.fillStyle='rgba(255,255,255,0.10)'; ctx.beginPath(); ctx.roundRect(barX,barY,barW,3,2); ctx.fill();
+  ctx.fillStyle=CORAL; ctx.beginPath(); ctx.roundRect(barX,barY,barW*Math.min(elapsed/TUTORIAL_DURATION,1),3,2); ctx.fill();
+
+  for(let i=0;i<3;i++){
+    ctx.beginPath(); ctx.arc(W/2+(i-1)*16,H-20,sceneIdx===i?4.5:3,0,Math.PI*2);
+    ctx.fillStyle=sceneIdx===i?CORAL:'rgba(255,255,255,0.25)'; ctx.fill();
+  }
+}
+
 function startDemo() {
   isDemoMode=true;
   hasAutoCaptured=false; stableCount=0; heightHist=[]; cachedPaperH=0;
@@ -1216,11 +1406,24 @@ function startDemo() {
   function loop() {
     rafId=requestAnimationFrame(loop);
     const elapsed=performance.now()-t0;
-    const s=demoState(elapsed);
+    ctx.clearRect(0,0,oc.width,oc.height);
+
+    // Tutorial phase
+    if(elapsed < TUTORIAL_DURATION) {
+      drawTutorial(elapsed);
+      instrDot.className='';
+      instrText.textContent='Watch how it works';
+      instrSub.textContent='Scan demo starts in a moment…';
+      stabFill.style.width='0%';
+      return;
+    }
+
+    // Scan demo phase — offset timeline by tutorial duration
+    const scanElapsed=elapsed-TUTORIAL_DURATION;
+    const s=demoState(scanElapsed);
     const cp=fakeCrop();
     const g=guideRect();
 
-    ctx.clearRect(0,0,oc.width,oc.height);
     drawDemoBackground();
 
     paperOK=s.paper;
@@ -1231,7 +1434,10 @@ function startDemo() {
 
     const meas=calcMeas(latestPose, cachedPaperH);
     drawPaperGuide(g, s.paper, cachedPaperH);
-    if(latestPose) drawHumanSilhouette(latestPose);
+    if(latestPose) {
+      drawHumanSilhouette(latestPose);
+      drawSkeleton(latestPose, cp);
+    }
     if(meas&&s.paper) drawHeightLine(meas);
 
     updateInstrCard(s.paper, !!latestPose, s.stab);
