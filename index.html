@@ -803,7 +803,7 @@ function instrCardH() {
 function guideRect() {
   const W=oc.width, H=oc.height, top=instrCardH();
   const availH = H - top - 90;   // leave room for bottom controls
-  const gH = availH * 0.85;
+  const gH = availH * 0.42;
   const gW = gH * (PAPER[selectedPaper].w / PAPER[selectedPaper].h);
   return { x: W*0.04, y: top + availH*0.08, w: gW, h: gH };
 }
@@ -917,29 +917,6 @@ function drawPaperGuide(g, ok, pH) {
   ctx.fillText(selectedPaper, g.x+g.w/2, g.y-8);
 }
 
-function drawMainFrame(ok, meas, stability) {
-  const W=oc.width, H=oc.height, top=instrCardH();
-  const fx=W*0.03, fy=top+8, fw=W*0.94, fh=H-fy-75, r=18;
-  const active = ok && meas;
-  ctx.save();
-  ctx.shadowColor=active?'rgba(232,96,76,0.45)':'rgba(255,255,255,0.2)';
-  ctx.shadowBlur=active?22:10;
-  ctx.strokeStyle=active?CORAL:'rgba(255,255,255,0.4)';
-  ctx.lineWidth=active?2:1.5;
-  ctx.roundRect(fx,fy,fw,fh,r); ctx.stroke();
-  ctx.restore();
-
-  // Success checkmark when stable
-  if(stability>=1.0) {
-    const cx=fx+fw/2, cy=fy+fh/2;
-    ctx.save();
-    ctx.fillStyle='rgba(76,175,80,0.9)';
-    ctx.beginPath(); ctx.arc(cx,cy,28,0,Math.PI*2); ctx.fill();
-    ctx.strokeStyle='white'; ctx.lineWidth=3; ctx.lineCap='round'; ctx.lineJoin='round';
-    ctx.beginPath(); ctx.moveTo(cx-12,cy); ctx.lineTo(cx-3,cy+10); ctx.lineTo(cx+13,cy-10); ctx.stroke();
-    ctx.restore();
-  }
-}
 
 function drawSkeleton(pose, cp) {
   const kps=pose.keypoints;
@@ -956,6 +933,98 @@ function drawSkeleton(pose, cp) {
     ctx.beginPath(); ctx.arc(s.x,s.y,4,0,Math.PI*2);
     ctx.fillStyle=i===KP.NOSE?CORAL:'rgba(255,255,255,0.85)'; ctx.fill();
   });
+}
+
+function drawCapsule(x1, y1, x2, y2, r) {
+  const dx=x2-x1, dy=y2-y1, len=Math.hypot(dx,dy);
+  if(len<1) return;
+  const nx=dy/len, ny=-dx/len;
+  ctx.beginPath();
+  ctx.moveTo(x1+nx*r, y1+ny*r);
+  ctx.lineTo(x2+nx*r, y2+ny*r);
+  ctx.arc(x2, y2, r, Math.atan2(ny, nx), Math.atan2(-ny, -nx));
+  ctx.lineTo(x1-nx*r, y1-ny*r);
+  ctx.arc(x1, y1, r, Math.atan2(-ny, -nx), Math.atan2(ny, nx));
+  ctx.closePath();
+}
+
+function drawHumanSilhouette(pose) {
+  const kps = pose.keypoints;
+  const g = (i) => kps[i];
+  const ok = (i) => g(i) && g(i).score >= MIN_KP_SCORE;
+
+  const ls=g(KP.L_SHOULDER), rs=g(KP.R_SHOULDER);
+  const lh=g(KP.L_HIP),      rh=g(KP.R_HIP);
+  const lk=g(KP.L_KNEE),     rk=g(KP.R_KNEE);
+  const la=g(KP.L_ANKLE),    ra=g(KP.R_ANKLE);
+  const le=g(KP.L_ELBOW),    re=g(KP.R_ELBOW);
+  const lw=g(KP.L_WRIST),    rw=g(KP.R_WRIST);
+  const nose=g(KP.NOSE);
+
+  const fill = (color) => { ctx.fillStyle=color; ctx.fill(); };
+  const stroke = (color, lw) => { ctx.strokeStyle=color; ctx.lineWidth=lw; ctx.stroke(); };
+
+  const BODY_COLOR  = 'rgba(255,255,255,0.18)';
+  const BODY_STROKE = 'rgba(255,255,255,0.55)';
+  const HEAD_COLOR  = 'rgba(255,255,255,0.22)';
+
+  ctx.save();
+
+  // torso
+  if(ok(KP.L_SHOULDER)&&ok(KP.R_SHOULDER)&&ok(KP.L_HIP)&&ok(KP.R_HIP)) {
+    const cx=(ls.x+rs.x)/2, cy=(ls.y+rs.y)/2;
+    const hx=(lh.x+rh.x)/2, hy=(lh.y+rh.y)/2;
+    const sw=Math.abs(rs.x-ls.x)/2*0.8;
+    const hw=Math.abs(rh.x-lh.x)/2*0.72;
+    ctx.beginPath();
+    ctx.moveTo(ls.x, ls.y); ctx.lineTo(rs.x, rs.y);
+    ctx.lineTo(rh.x, rh.y); ctx.lineTo(lh.x, lh.y);
+    ctx.closePath();
+    fill(BODY_COLOR); stroke(BODY_STROKE, 1.5);
+  }
+
+  // upper arms
+  if(ok(KP.L_SHOULDER)&&ok(KP.L_ELBOW)) {
+    drawCapsule(ls.x,ls.y,le.x,le.y,6); fill(BODY_COLOR); stroke(BODY_STROKE,1.5);
+  }
+  if(ok(KP.R_SHOULDER)&&ok(KP.R_ELBOW)) {
+    drawCapsule(rs.x,rs.y,re.x,re.y,6); fill(BODY_COLOR); stroke(BODY_STROKE,1.5);
+  }
+  // forearms
+  if(ok(KP.L_ELBOW)&&ok(KP.L_WRIST)) {
+    drawCapsule(le.x,le.y,lw.x,lw.y,5); fill(BODY_COLOR); stroke(BODY_STROKE,1.5);
+  }
+  if(ok(KP.R_ELBOW)&&ok(KP.R_WRIST)) {
+    drawCapsule(re.x,re.y,rw.x,rw.y,5); fill(BODY_COLOR); stroke(BODY_STROKE,1.5);
+  }
+
+  // thighs
+  if(ok(KP.L_HIP)&&ok(KP.L_KNEE)) {
+    drawCapsule(lh.x,lh.y,lk.x,lk.y,9); fill(BODY_COLOR); stroke(BODY_STROKE,1.5);
+  }
+  if(ok(KP.R_HIP)&&ok(KP.R_KNEE)) {
+    drawCapsule(rh.x,rh.y,rk.x,rk.y,9); fill(BODY_COLOR); stroke(BODY_STROKE,1.5);
+  }
+  // shins
+  if(ok(KP.L_KNEE)&&ok(KP.L_ANKLE)) {
+    drawCapsule(lk.x,lk.y,la.x,la.y,7); fill(BODY_COLOR); stroke(BODY_STROKE,1.5);
+  }
+  if(ok(KP.R_KNEE)&&ok(KP.R_ANKLE)) {
+    drawCapsule(rk.x,rk.y,ra.x,ra.y,7); fill(BODY_COLOR); stroke(BODY_STROKE,1.5);
+  }
+
+  // head circle
+  if(ok(KP.NOSE)&&ok(KP.L_SHOULDER)&&ok(KP.R_SHOULDER)) {
+    const headR = Math.abs(rs.x-ls.x)*0.22;
+    const headCY = nose.y - headR*0.3;
+    ctx.beginPath(); ctx.arc(nose.x, headCY, headR, 0, Math.PI*2);
+    fill(HEAD_COLOR); stroke(BODY_STROKE, 1.5);
+    // coral nose dot
+    ctx.beginPath(); ctx.arc(nose.x, nose.y, 4, 0, Math.PI*2);
+    ctx.fillStyle=CORAL; ctx.fill();
+  }
+
+  ctx.restore();
 }
 
 function drawHeightLine(meas) {
@@ -1020,7 +1089,6 @@ function startLoop() {
     const meas=calcMeas(latestPose,cachedPaperH);
     const stab=trackStability(meas?.heightCm||null);
     // Draw
-    drawMainFrame(paperOK, meas, stab);
     drawPaperGuide(g, paperOK, cachedPaperH);
     if(latestPose&&cp) drawSkeleton(latestPose,cp);
     if(meas&&paperOK) drawHeightLine(meas);
@@ -1162,9 +1230,8 @@ function startDemo() {
     if(s.paper) drawDemoPaper(g);
 
     const meas=calcMeas(latestPose, cachedPaperH);
-    drawMainFrame(s.paper, meas, s.stab);
     drawPaperGuide(g, s.paper, cachedPaperH);
-    if(latestPose) drawSkeleton(latestPose, cp);
+    if(latestPose) drawHumanSilhouette(latestPose);
     if(meas&&s.paper) drawHeightLine(meas);
 
     updateInstrCard(s.paper, !!latestPose, s.stab);
