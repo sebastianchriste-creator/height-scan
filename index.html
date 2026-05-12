@@ -1,0 +1,1048 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <meta name="mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black">
+  <meta name="theme-color" content="#2A2A2A">
+  <title>BodyScan</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
+  <style>
+    *, *::before, *::after {
+      margin: 0; padding: 0; box-sizing: border-box;
+      -webkit-tap-highlight-color: transparent;
+    }
+
+    :root {
+      --coral:       #E8604C;
+      --coral-dim:   rgba(232, 96, 76, 0.15);
+      --coral-glow:  rgba(232, 96, 76, 0.4);
+      --navy:        #0D1B2A;
+      --charcoal:    #2A2A2A;
+      --sage:        #EFEFEA;
+      --sage-dark:   #E3E3DC;
+      --yellow:      #EDD94E;
+      --yellow-bg:   rgba(237, 217, 78, 0.2);
+      --white:       #FFFFFF;
+      --gray-text:   #6B6B6B;
+      --light-border:#E0E0D8;
+      --safe-top:    max(20px, env(safe-area-inset-top));
+      --safe-bot:    max(24px, env(safe-area-inset-bottom));
+    }
+
+    html, body {
+      width: 100%; height: 100%;
+      background: var(--charcoal);
+      font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+      overflow: hidden;
+      user-select: none; -webkit-user-select: none;
+    }
+
+    #app { width: 100%; height: 100%; position: relative; }
+
+    /* ── SCREENS ──────────────────────────────────────────── */
+    .screen {
+      position: absolute; inset: 0;
+      display: none; flex-direction: column;
+    }
+    .screen.active { display: flex; }
+
+    /* ── LOGO MARK (SVG inline) ────────────────────────────── */
+    .logo {
+      display: flex; flex-direction: column;
+      align-items: flex-start; gap: 3px;
+    }
+    .logo svg { display: block; }
+    .logo-name {
+      font-size: 10px; font-weight: 700;
+      letter-spacing: 0.18em; text-transform: uppercase;
+      color: var(--navy);
+    }
+    .logo-name.light { color: var(--white); }
+
+    /* ── WELCOME ──────────────────────────────────────────── */
+    #screen-welcome {
+      background: var(--white);
+      padding-top: var(--safe-top);
+      padding-bottom: var(--safe-bot);
+      overflow-y: auto;
+    }
+
+    .welcome-nav {
+      display: flex; align-items: center;
+      justify-content: space-between;
+      padding: 16px 24px 0;
+    }
+    .nav-badge {
+      font-size: 11px; font-weight: 600;
+      color: var(--coral); letter-spacing: 0.05em;
+      background: var(--coral-dim);
+      padding: 4px 10px; border-radius: 100px;
+    }
+
+    .welcome-hero {
+      padding: 40px 24px 0;
+    }
+    .welcome-kicker {
+      font-size: 11px; font-weight: 700;
+      letter-spacing: 0.12em; text-transform: uppercase;
+      color: var(--coral); margin-bottom: 12px;
+    }
+    .welcome-title {
+      font-size: 34px; font-weight: 800;
+      color: var(--navy); line-height: 1.1;
+      letter-spacing: -0.5px; margin-bottom: 12px;
+    }
+    .welcome-sub {
+      font-size: 15px; color: var(--gray-text);
+      line-height: 1.6; margin-bottom: 32px;
+    }
+
+    /* illustration card */
+    .illus-card {
+      margin: 0 24px 28px;
+      background: var(--sage);
+      border-radius: 20px;
+      padding: 24px;
+      display: flex; align-items: center; gap: 20px;
+    }
+    .illus-img {
+      width: 90px; min-width: 90px; height: 90px;
+      background: #dde6ee;
+      border-radius: 14px;
+      display: flex; align-items: center; justify-content: center;
+      overflow: hidden;
+    }
+
+    .illus-text h3 {
+      font-size: 14px; font-weight: 700; color: var(--navy);
+      margin-bottom: 6px;
+    }
+    .illus-text p {
+      font-size: 13px; color: var(--gray-text); line-height: 1.5;
+    }
+
+    /* steps */
+    .steps {
+      padding: 0 24px;
+      display: flex; flex-direction: column; gap: 0;
+      margin-bottom: 28px;
+    }
+    .step {
+      display: flex; align-items: flex-start; gap: 14px;
+      padding: 14px 0;
+      border-bottom: 1px solid var(--light-border);
+    }
+    .step:last-child { border-bottom: none; }
+    .step-num {
+      width: 28px; height: 28px; min-width: 28px;
+      border-radius: 50%;
+      background: var(--coral); color: var(--white);
+      font-size: 13px; font-weight: 700;
+      display: flex; align-items: center; justify-content: center;
+      margin-top: 1px;
+    }
+    .step-body {}
+    .step-title { font-size: 14px; font-weight: 600; color: var(--navy); margin-bottom: 2px; }
+    .step-desc  { font-size: 13px; color: var(--gray-text); line-height: 1.5; }
+
+    /* paper size segmented control */
+    .size-section { padding: 0 24px 28px; }
+    .size-label {
+      font-size: 11px; font-weight: 700; letter-spacing: 0.1em;
+      text-transform: uppercase; color: var(--gray-text);
+      margin-bottom: 10px;
+    }
+    .seg {
+      display: flex; background: var(--sage);
+      border-radius: 12px; padding: 4px; gap: 4px;
+    }
+    .seg-btn {
+      flex: 1; padding: 10px 6px;
+      border: none; background: transparent;
+      color: var(--gray-text); font-size: 14px; font-weight: 500;
+      font-family: inherit; border-radius: 9px; cursor: pointer;
+      transition: all 0.18s;
+    }
+    .seg-btn.active {
+      background: var(--white);
+      color: var(--navy); font-weight: 700;
+      box-shadow: 0 1px 4px rgba(0,0,0,0.1);
+    }
+
+    /* CTA */
+    .cta-wrap { padding: 0 24px; }
+    .btn-coral {
+      width: 100%; padding: 17px;
+      background: var(--coral); color: var(--white);
+      font-size: 16px; font-weight: 700; font-family: inherit;
+      border: none; border-radius: 100px; cursor: pointer;
+      transition: opacity 0.15s, transform 0.1s;
+      letter-spacing: 0.01em;
+    }
+    .btn-coral:active { opacity: 0.82; transform: scale(0.98); }
+    .legal {
+      font-size: 11px; color: #B0B0A8;
+      text-align: center; margin-top: 12px; line-height: 1.6;
+      padding: 0 24px;
+    }
+
+    /* ── LOADING ──────────────────────────────────────────── */
+    #screen-loading {
+      background: var(--charcoal);
+      align-items: center; justify-content: center; gap: 16px;
+    }
+    .spinner {
+      width: 44px; height: 44px;
+      border: 3px solid rgba(232,96,76,0.2);
+      border-top-color: var(--coral);
+      border-radius: 50%;
+      animation: spin 0.75s linear infinite;
+    }
+    @keyframes spin { to { transform: rotate(360deg); } }
+    .loading-label { font-size: 16px; font-weight: 600; color: var(--white); }
+    .loading-sub   { font-size: 13px; color: rgba(255,255,255,0.4); }
+
+    /* ── SCAN ─────────────────────────────────────────────── */
+    #screen-scan { background: #000; }
+
+    #video {
+      position: absolute; inset: 0;
+      width: 100%; height: 100%;
+      object-fit: cover;
+    }
+    #overlay-canvas {
+      position: absolute; inset: 0;
+      width: 100%; height: 100%;
+    }
+
+    /* Instruction card — floats at top */
+    #instr-card {
+      position: absolute; left: 12px; right: 12px;
+      top: var(--safe-top);
+      background: var(--white);
+      border-radius: 18px;
+      padding: 12px 14px;
+      display: flex; align-items: center; gap: 12px;
+      box-shadow: 0 4px 24px rgba(0,0,0,0.35);
+      z-index: 10;
+    }
+    #instr-thumb {
+      width: 58px; min-width: 58px; height: 58px;
+      background: #dde6ee; border-radius: 11px;
+      display: flex; align-items: center; justify-content: center;
+      overflow: hidden;
+    }
+    #instr-right { flex: 1; min-width: 0; }
+    #instr-eyebrow {
+      font-size: 10px; font-weight: 700;
+      letter-spacing: 0.1em; text-transform: uppercase;
+      color: var(--coral); margin-bottom: 3px;
+    }
+    #instr-text {
+      font-size: 13px; font-weight: 600; color: var(--navy);
+      line-height: 1.35;
+    }
+    #instr-sub {
+      font-size: 11px; color: var(--gray-text); margin-top: 2px;
+    }
+
+    /* Status dot */
+    #instr-dot {
+      width: 10px; height: 10px; min-width: 10px;
+      border-radius: 50%; background: #ccc;
+      transition: background 0.3s;
+    }
+    #instr-dot.warn  { background: #FFB800; }
+    #instr-dot.ok    { background: #4CAF50; animation: pulse-dot 1.2s ease-in-out infinite; }
+    @keyframes pulse-dot {
+      0%,100% { box-shadow: 0 0 0 0 rgba(76,175,80,0.4); }
+      50%      { box-shadow: 0 0 0 5px transparent; }
+    }
+
+    /* Bottom controls */
+    #scan-bottom {
+      position: absolute;
+      left: 0; right: 0;
+      bottom: var(--safe-bot);
+      display: flex; flex-direction: column;
+      align-items: center; gap: 10px;
+      z-index: 10;
+    }
+
+    #stab-track {
+      width: 60%; height: 3px;
+      background: rgba(255,255,255,0.2);
+      border-radius: 2px; overflow: hidden;
+    }
+    #stab-fill {
+      height: 100%; width: 0%;
+      background: var(--coral);
+      border-radius: 2px;
+      transition: width 0.1s linear, background 0.3s;
+    }
+
+    #capture-btn {
+      width: 70px; height: 70px; border-radius: 50%;
+      background: var(--coral); color: var(--white);
+      border: 3px solid rgba(255,255,255,0.3);
+      box-shadow: 0 0 30px var(--coral-glow);
+      cursor: pointer;
+      display: flex; align-items: center; justify-content: center;
+      transition: transform 0.12s;
+    }
+    #capture-btn:active { transform: scale(0.90); }
+    #capture-btn svg { fill: var(--white); width: 30px; height: 30px; }
+
+    #scan-tip {
+      font-size: 12px; color: rgba(255,255,255,0.45);
+      text-align: center; padding: 0 20px;
+    }
+
+    /* Flash */
+    #flash {
+      position: absolute; inset: 0;
+      background: white; opacity: 0; pointer-events: none;
+      transition: opacity 0.05s; z-index: 20;
+    }
+    #flash.on { opacity: 0.7; }
+
+    /* ── RESULT ───────────────────────────────────────────── */
+    #screen-result {
+      background: var(--sage);
+      padding-top: var(--safe-top);
+      padding-bottom: var(--safe-bot);
+      overflow-y: auto;
+    }
+
+    /* result nav */
+    .result-nav {
+      display: flex; align-items: center; justify-content: space-between;
+      padding: 16px 20px 20px;
+    }
+    .result-nav-title {
+      font-size: 13px; font-weight: 600; color: var(--gray-text);
+      font-style: italic;
+    }
+    .result-nav-title strong { color: var(--navy); font-style: normal; }
+
+    /* hero card */
+    .result-hero {
+      margin: 0 16px 12px;
+      background: var(--white);
+      border-radius: 22px;
+      padding: 24px 22px;
+    }
+    .rec-badge {
+      display: inline-flex; align-items: center; gap: 5px;
+      background: var(--yellow);
+      color: #5C4800;
+      font-size: 11px; font-weight: 700;
+      letter-spacing: 0.05em; text-transform: uppercase;
+      padding: 4px 10px; border-radius: 100px;
+      margin-bottom: 14px;
+    }
+    .height-value {
+      font-size: 72px; font-weight: 800;
+      color: var(--navy); line-height: 1;
+      letter-spacing: -3px; margin-bottom: 2px;
+    }
+    .height-unit {
+      font-size: 28px; font-weight: 400;
+      color: var(--gray-text); letter-spacing: -1px;
+    }
+    .height-imperial {
+      font-size: 20px; color: var(--gray-text);
+      font-weight: 400; margin-top: 6px;
+    }
+
+    /* detail section */
+    .result-section-label {
+      font-size: 11px; font-weight: 700;
+      letter-spacing: 0.1em; text-transform: uppercase;
+      color: var(--gray-text);
+      padding: 0 20px 10px;
+    }
+
+    .detail-list {
+      margin: 0 16px 12px;
+      background: var(--white);
+      border-radius: 18px;
+      overflow: hidden;
+    }
+    .detail-row {
+      display: flex; align-items: center; justify-content: space-between;
+      padding: 14px 18px;
+      border-bottom: 1px solid var(--sage);
+    }
+    .detail-row:last-child { border-bottom: none; }
+    .detail-key {
+      font-size: 14px; color: var(--gray-text); font-weight: 400;
+    }
+    .detail-val {
+      font-size: 14px; color: var(--navy); font-weight: 600;
+    }
+
+    /* size chip */
+    .size-chip-wrap {
+      margin: 0 16px 24px;
+      background: var(--coral);
+      border-radius: 18px;
+      padding: 18px 20px;
+      display: flex; align-items: center; justify-content: space-between;
+    }
+    .size-chip-label {
+      font-size: 12px; color: rgba(255,255,255,0.7);
+      font-weight: 500; margin-bottom: 4px;
+    }
+    .size-chip-value {
+      font-size: 26px; font-weight: 800;
+      color: var(--white); letter-spacing: -0.5px;
+    }
+    .size-chip-icon { font-size: 36px; }
+
+    /* action buttons */
+    .result-actions { padding: 0 16px; display: flex; flex-direction: column; gap: 10px; }
+
+    .btn-outline {
+      width: 100%; padding: 16px;
+      background: var(--white); color: var(--navy);
+      font-size: 15px; font-weight: 600; font-family: inherit;
+      border: none; border-radius: 100px; cursor: pointer;
+      transition: opacity 0.15s;
+    }
+    .btn-outline:active { opacity: 0.7; }
+    .btn-ghost {
+      width: 100%; padding: 14px;
+      background: transparent; color: var(--gray-text);
+      font-size: 14px; font-weight: 500; font-family: inherit;
+      border: none; cursor: pointer;
+    }
+  </style>
+</head>
+
+<body>
+<div id="app">
+
+  <!-- ══════════════════════════════ WELCOME -->
+  <div id="screen-welcome" class="screen active">
+
+    <div class="welcome-nav">
+      <!-- Logo mark: >|↑ BODYSCAN -->
+      <div class="logo">
+        <svg width="48" height="24" viewBox="0 0 48 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+          <polyline points="2,2 11,12 2,22" stroke="#0D1B2A" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"/>
+          <line x1="17" y1="2" x2="17" y2="22" stroke="#0D1B2A" stroke-width="2.5" stroke-linecap="round"/>
+          <line x1="31" y1="22" x2="31" y2="5" stroke="#E8604C" stroke-width="2.5" stroke-linecap="round"/>
+          <polyline points="25,10 31,3 37,10" stroke="#E8604C" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"/>
+        </svg>
+        <span class="logo-name">BODYSCAN</span>
+      </div>
+      <div class="nav-badge">Beta</div>
+    </div>
+
+    <div class="welcome-hero">
+      <div class="welcome-kicker">Height &amp; Body Measurement</div>
+      <div class="welcome-title">Scan your height<br>in seconds.</div>
+      <div class="welcome-sub">Use any A4 or Letter sheet as a scale reference. No tape measure needed.</div>
+    </div>
+
+    <!-- Illustration card -->
+    <div class="illus-card">
+      <div class="illus-img">
+        <!-- Inline SVG: person standing next to paper on wall -->
+        <svg viewBox="0 0 90 90" width="90" height="90" xmlns="http://www.w3.org/2000/svg">
+          <rect width="90" height="90" fill="#dde6ee"/>
+          <!-- Wall -->
+          <line x1="72" y1="0" x2="72" y2="90" stroke="#C0CDD8" stroke-width="2.5"/>
+          <!-- Paper on wall -->
+          <rect x="56" y="12" width="14" height="20" rx="1.5" fill="white" stroke="#B0BEC5" stroke-width="1"/>
+          <!-- Height arrow (coral) -->
+          <line x1="22" y1="14" x2="22" y2="75" stroke="#E8604C" stroke-width="1.5" stroke-dasharray="3,2.5"/>
+          <polyline points="18,20 22,13 26,20" stroke="#E8604C" stroke-width="1.5" fill="none" stroke-linecap="round" stroke-linejoin="round"/>
+          <polyline points="18,69 22,76 26,69" stroke="#E8604C" stroke-width="1.5" fill="none" stroke-linecap="round" stroke-linejoin="round"/>
+          <!-- Person silhouette -->
+          <circle cx="46" cy="21" r="7" fill="#B0BEC5"/>
+          <!-- Body -->
+          <line x1="46" y1="28" x2="46" y2="55" stroke="#78909C" stroke-width="5" stroke-linecap="round"/>
+          <!-- Arms -->
+          <line x1="46" y1="36" x2="36" y2="46" stroke="#78909C" stroke-width="3.5" stroke-linecap="round"/>
+          <line x1="46" y1="36" x2="56" y2="46" stroke="#78909C" stroke-width="3.5" stroke-linecap="round"/>
+          <!-- Legs -->
+          <line x1="46" y1="55" x2="40" y2="74" stroke="#78909C" stroke-width="3.5" stroke-linecap="round"/>
+          <line x1="46" y1="55" x2="52" y2="74" stroke="#78909C" stroke-width="3.5" stroke-linecap="round"/>
+          <!-- Feet -->
+          <line x1="40" y1="74" x2="36" y2="76" stroke="#78909C" stroke-width="3" stroke-linecap="round"/>
+          <line x1="52" y1="74" x2="56" y2="76" stroke="#78909C" stroke-width="3" stroke-linecap="round"/>
+        </svg>
+      </div>
+      <div class="illus-text">
+        <h3>One sheet does it all</h3>
+        <p>Tape an A4 or Letter sheet to the wall. Stand next to it. The AI handles the rest.</p>
+      </div>
+    </div>
+
+    <!-- Steps -->
+    <div class="steps">
+      <div class="step">
+        <div class="step-num">1</div>
+        <div class="step-body">
+          <div class="step-title">Tape paper to wall</div>
+          <div class="step-desc">Portrait orientation, bottom edge at floor level.</div>
+        </div>
+      </div>
+      <div class="step">
+        <div class="step-num">2</div>
+        <div class="step-body">
+          <div class="step-title">Align with the guide</div>
+          <div class="step-desc">Move the camera until the paper fits the left-side guide box.</div>
+        </div>
+      </div>
+      <div class="step">
+        <div class="step-num">3</div>
+        <div class="step-body">
+          <div class="step-title">Stand still</div>
+          <div class="step-desc">Back straight, heels flat. Captures automatically.</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Paper size -->
+    <div class="size-section">
+      <div class="size-label">Paper size</div>
+      <div class="seg">
+        <button class="seg-btn active" data-size="A4">A4 &nbsp;210 × 297 mm</button>
+        <button class="seg-btn"        data-size="Letter">Letter &nbsp;8.5 × 11″</button>
+      </div>
+    </div>
+
+    <div class="cta-wrap">
+      <button class="btn-coral" id="btn-start">Start scanning →</button>
+    </div>
+    <div class="legal">Requires camera permission · Best results under good lighting · HTTPS required</div>
+  </div>
+
+  <!-- ══════════════════════════════ LOADING -->
+  <div id="screen-loading" class="screen">
+    <div class="spinner"></div>
+    <div class="loading-label">Loading AI model…</div>
+    <div class="loading-sub">MoveNet pose detection · first run ~10 s</div>
+  </div>
+
+  <!-- ══════════════════════════════ SCAN -->
+  <div id="screen-scan" class="screen">
+    <video id="video" autoplay playsinline muted></video>
+    <canvas id="overlay-canvas"></canvas>
+    <div id="flash"></div>
+
+    <!-- Floating instruction card -->
+    <div id="instr-card">
+      <div id="instr-thumb">
+        <!-- mini illustration -->
+        <svg viewBox="0 0 58 58" width="58" height="58" xmlns="http://www.w3.org/2000/svg">
+          <rect width="58" height="58" fill="#dde6ee"/>
+          <line x1="46" y1="0" x2="46" y2="58" stroke="#C0CDD8" stroke-width="1.5"/>
+          <rect x="36" y="8" width="9" height="13" rx="1" fill="white" stroke="#B0BEC5" stroke-width="0.8"/>
+          <line x1="14" y1="9" x2="14" y2="49" stroke="#E8604C" stroke-width="1" stroke-dasharray="2,2"/>
+          <polyline points="11,13 14,9 17,13" stroke="#E8604C" stroke-width="1" fill="none" stroke-linecap="round" stroke-linejoin="round"/>
+          <polyline points="11,45 14,49 17,45" stroke="#E8604C" stroke-width="1" fill="none" stroke-linecap="round" stroke-linejoin="round"/>
+          <circle cx="30" cy="14" r="4.5" fill="#B0BEC5"/>
+          <line x1="30" y1="18" x2="30" y2="36" stroke="#78909C" stroke-width="3.5" stroke-linecap="round"/>
+          <line x1="30" y1="24" x2="23" y2="30" stroke="#78909C" stroke-width="2.5" stroke-linecap="round"/>
+          <line x1="30" y1="24" x2="37" y2="30" stroke="#78909C" stroke-width="2.5" stroke-linecap="round"/>
+          <line x1="30" y1="36" x2="26" y2="48" stroke="#78909C" stroke-width="2.5" stroke-linecap="round"/>
+          <line x1="30" y1="36" x2="34" y2="48" stroke="#78909C" stroke-width="2.5" stroke-linecap="round"/>
+        </svg>
+      </div>
+      <div id="instr-right">
+        <div id="instr-eyebrow">Take a photo like this</div>
+        <div id="instr-text">Align paper with guide</div>
+        <div id="instr-sub">Paper not detected yet</div>
+      </div>
+      <div id="instr-dot"></div>
+    </div>
+
+    <!-- Bottom controls -->
+    <div id="scan-bottom">
+      <div id="stab-track"><div id="stab-fill"></div></div>
+      <button id="capture-btn" title="Capture">
+        <svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+          <path d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" stroke="white" stroke-width="2" fill="none" stroke-linecap="round" stroke-linejoin="round"/>
+        </svg>
+      </button>
+      <div id="scan-tip">Captures automatically when stable</div>
+    </div>
+  </div>
+
+  <!-- ══════════════════════════════ RESULT -->
+  <div id="screen-result" class="screen">
+
+    <div class="result-nav">
+      <div class="logo">
+        <svg width="48" height="24" viewBox="0 0 48 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+          <polyline points="2,2 11,12 2,22" stroke="#0D1B2A" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"/>
+          <line x1="17" y1="2" x2="17" y2="22" stroke="#0D1B2A" stroke-width="2.5" stroke-linecap="round"/>
+          <line x1="31" y1="22" x2="31" y2="5" stroke="#E8604C" stroke-width="2.5" stroke-linecap="round"/>
+          <polyline points="25,10 31,3 37,10" stroke="#E8604C" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"/>
+        </svg>
+        <span class="logo-name">BODYSCAN</span>
+      </div>
+      <div class="result-nav-title">Your <strong>measurement</strong></div>
+    </div>
+
+    <div class="result-hero">
+      <div class="rec-badge">
+        <svg width="12" height="12" viewBox="0 0 12 12" fill="none">
+          <circle cx="6" cy="6" r="5.5" stroke="#5C4800" stroke-width="1"/>
+          <path d="M3.5 6l1.8 1.8L8.5 4" stroke="#5C4800" stroke-width="1.2" stroke-linecap="round" stroke-linejoin="round"/>
+        </svg>
+        Measured
+      </div>
+      <div>
+        <span class="height-value" id="r-cm">--</span>
+        <span class="height-unit"> cm</span>
+      </div>
+      <div class="height-imperial" id="r-imp">--</div>
+    </div>
+
+    <div class="result-section-label" style="margin-top:4px;">Details</div>
+    <div class="detail-list">
+      <div class="detail-row">
+        <span class="detail-key">Shoulder width</span>
+        <span class="detail-val" id="r-shoulder">—</span>
+      </div>
+      <div class="detail-row">
+        <span class="detail-key">Build</span>
+        <span class="detail-val" id="r-build">—</span>
+      </div>
+      <div class="detail-row">
+        <span class="detail-key">Paper used</span>
+        <span class="detail-val" id="r-paper">A4</span>
+      </div>
+    </div>
+
+    <div class="size-chip-wrap">
+      <div>
+        <div class="size-chip-label">Indicative clothing size</div>
+        <div class="size-chip-value" id="r-size">—</div>
+      </div>
+      <div class="size-chip-icon">👕</div>
+    </div>
+
+    <div class="result-actions">
+      <button class="btn-coral" id="btn-retake">Scan again</button>
+      <button class="btn-outline" id="btn-home">← Back to start</button>
+    </div>
+
+  </div>
+</div>
+
+<!-- hidden processing canvas -->
+<canvas id="proc-canvas" style="display:none"></canvas>
+
+<script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs@4.11.0/dist/tf.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/@tensorflow-models/pose-detection@2.1.3/dist/pose-detection.min.js"></script>
+
+<script>
+'use strict';
+
+// ── roundRect polyfill ────────────────────────────────────────────────────────
+if (!CanvasRenderingContext2D.prototype.roundRect) {
+  CanvasRenderingContext2D.prototype.roundRect = function(x,y,w,h,r) {
+    this.beginPath();
+    this.moveTo(x+r, y);
+    this.lineTo(x+w-r, y);
+    this.quadraticCurveTo(x+w, y, x+w, y+r);
+    this.lineTo(x+w, y+h-r);
+    this.quadraticCurveTo(x+w, y+h, x+w-r, y+h);
+    this.lineTo(x+r, y+h);
+    this.quadraticCurveTo(x, y+h, x, y+h-r);
+    this.lineTo(x, y+r);
+    this.quadraticCurveTo(x, y, x+r, y);
+    this.closePath();
+  };
+}
+
+// ── CONFIG ────────────────────────────────────────────────────────────────────
+const PAPER = { A4: {w:210, h:297}, Letter: {w:215.9, h:279.4} };
+const KP = {
+  NOSE:0, L_EYE:1, R_EYE:2, L_EAR:3, R_EAR:4,
+  L_SHOULDER:5, R_SHOULDER:6, L_ELBOW:7, R_ELBOW:8,
+  L_WRIST:9,  R_WRIST:10,  L_HIP:11,  R_HIP:12,
+  L_KNEE:13,  R_KNEE:14,   L_ANKLE:15, R_ANKLE:16
+};
+const BONES = [
+  [KP.L_SHOULDER,KP.R_SHOULDER],
+  [KP.L_SHOULDER,KP.L_ELBOW],[KP.L_ELBOW,KP.L_WRIST],
+  [KP.R_SHOULDER,KP.R_ELBOW],[KP.R_ELBOW,KP.R_WRIST],
+  [KP.L_SHOULDER,KP.L_HIP],[KP.R_SHOULDER,KP.R_HIP],
+  [KP.L_HIP,KP.R_HIP],
+  [KP.L_HIP,KP.L_KNEE],[KP.L_KNEE,KP.L_ANKLE],
+  [KP.R_HIP,KP.R_KNEE],[KP.R_KNEE,KP.R_ANKLE]
+];
+const CORAL        = '#E8604C';
+const STABLE_NEED  = 22;
+const MIN_KP_SCORE = 0.25;
+
+// ── STATE ─────────────────────────────────────────────────────────────────────
+let selectedPaper = 'A4';
+let detector = null, mediaStream = null;
+let latestPose = null, isDetecting = false;
+let frameIdx = 0, paperOK = false, cachedPaperH = 0;
+let heightHist = [], stableCount = 0;
+let hasAutoCaptured = false, rafId = null;
+
+// ── DOM ───────────────────────────────────────────────────────────────────────
+const video     = document.getElementById('video');
+const oc        = document.getElementById('overlay-canvas');
+const pc        = document.getElementById('proc-canvas');
+const ctx       = oc.getContext('2d');
+const pctx      = pc.getContext('2d', {willReadFrequently: true});
+const instrDot  = document.getElementById('instr-dot');
+const instrText = document.getElementById('instr-text');
+const instrSub  = document.getElementById('instr-sub');
+const stabFill  = document.getElementById('stab-fill');
+const captureBtn= document.getElementById('capture-btn');
+const flash     = document.getElementById('flash');
+
+// ── SCREENS ───────────────────────────────────────────────────────────────────
+function show(id) {
+  document.querySelectorAll('.screen').forEach(s=>s.classList.remove('active'));
+  document.getElementById('screen-'+id).classList.add('active');
+}
+
+// ── PAPER SIZE ────────────────────────────────────────────────────────────────
+document.querySelectorAll('.seg-btn').forEach(btn => {
+  btn.addEventListener('click', () => {
+    document.querySelectorAll('.seg-btn').forEach(b=>b.classList.remove('active'));
+    btn.classList.add('active');
+    selectedPaper = btn.dataset.size;
+  });
+});
+
+// ── START ─────────────────────────────────────────────────────────────────────
+document.getElementById('btn-start').addEventListener('click', async () => {
+  show('loading');
+  try {
+    await startCamera();
+    await loadModel();
+    show('scan');
+    startLoop();
+  } catch(e) {
+    alert('Could not start:\n'+e.message+'\n\nEnsure HTTPS and camera permission.');
+    show('welcome');
+  }
+});
+
+async function startCamera() {
+  mediaStream = await navigator.mediaDevices.getUserMedia({
+    video: { facingMode:{ideal:'environment'}, width:{ideal:1920}, height:{ideal:1080} },
+    audio: false
+  });
+  video.srcObject = mediaStream;
+  return new Promise(res => { video.onloadedmetadata = () => video.play().then(res); });
+}
+
+async function loadModel() {
+  await tf.ready();
+  detector = await poseDetection.createDetector(
+    poseDetection.SupportedModels.MoveNet,
+    { modelType: poseDetection.movenet.modelType.SINGLEPOSE_LIGHTNING }
+  );
+}
+
+// ── CANVAS RESIZE ─────────────────────────────────────────────────────────────
+function resizeCanvas() { oc.width=window.innerWidth; oc.height=window.innerHeight; }
+window.addEventListener('resize', resizeCanvas);
+resizeCanvas();
+
+// ── VIDEO CROP ────────────────────────────────────────────────────────────────
+function getCrop() {
+  const vw=video.videoWidth, vh=video.videoHeight, dw=oc.width, dh=oc.height;
+  if (!vw||!vh) return null;
+  if (vw/vh > dw/dh) {
+    const s=dh/vh; return {sx:(vw-dw/s)/2, sy:0, sw:dw/s, sh:vh, scale:s};
+  }
+  const s=dw/vw; return {sx:0, sy:(vh-dh/s)/2, sw:vw, sh:dh/s, scale:s};
+}
+function v2s(vx,vy,cp) { return {x:(vx-cp.sx)*cp.scale, y:(vy-cp.sy)*cp.scale}; }
+
+// ── GUIDE RECT ────────────────────────────────────────────────────────────────
+// Offset top by the instruction card height
+function instrCardH() {
+  const card = document.getElementById('instr-card');
+  if (!card) return 110;
+  const rect = card.getBoundingClientRect();
+  return rect.bottom + 12;
+}
+function guideRect() {
+  const W=oc.width, H=oc.height, top=instrCardH();
+  const availH = H - top - 90;   // leave room for bottom controls
+  const gH = availH * 0.85;
+  const gW = gH * (PAPER[selectedPaper].w / PAPER[selectedPaper].h);
+  return { x: W*0.04, y: top + availH*0.08, w: gW, h: gH };
+}
+
+// ── PAPER DETECTION ───────────────────────────────────────────────────────────
+function detectPaperH(g) {
+  const cp = getCrop();
+  if (!cp||!video.videoWidth) return 0;
+  const PH=160, scale=PH/g.h, pw=Math.round(g.w*scale);
+  pc.width=pw; pc.height=PH;
+  pctx.drawImage(video, g.x/cp.scale+cp.sx, g.y/cp.scale+cp.sy,
+                        g.w/cp.scale, g.h/cp.scale, 0,0,pw,PH);
+  const d = pctx.getImageData(0,0,pw,PH).data;
+  let f=-1, l=-1;
+  for (let y=0;y<PH;y++) {
+    let bright=0;
+    for (let x=0;x<pw;x++) {
+      const i=(y*pw+x)*4;
+      if (0.299*d[i]+0.587*d[i+1]+0.114*d[i+2] > 162) bright++;
+    }
+    if (bright/pw>0.42) { if(f<0)f=y; l=y; }
+  }
+  if (f<0||l-f<25) return 0;
+  return (l-f)/scale;
+}
+
+// ── POSE DETECTION ────────────────────────────────────────────────────────────
+async function runPose() {
+  if (isDetecting||!detector||video.readyState<2) return;
+  isDetecting=true;
+  try {
+    const p=await detector.estimatePoses(video,{flipHorizontal:false});
+    latestPose=p.length>0?p[0]:null;
+  } catch(_){}
+  isDetecting=false;
+}
+
+// ── MEASUREMENT ───────────────────────────────────────────────────────────────
+function calcMeas(pose, paperH) {
+  if (!pose||paperH<20) return null;
+  const cp=getCrop(); if(!cp) return null;
+  const kps=pose.keypoints;
+  const nose=kps[KP.NOSE]; if(!nose||nose.score<MIN_KP_SCORE) return null;
+  const la=kps[KP.L_ANKLE], ra=kps[KP.R_ANKLE];
+  let ankleVY=null;
+  if(la?.score>MIN_KP_SCORE&&ra?.score>MIN_KP_SCORE) ankleVY=(la.y+ra.y)/2;
+  else if(la?.score>MIN_KP_SCORE) ankleVY=la.y;
+  else if(ra?.score>MIN_KP_SCORE) ankleVY=ra.y;
+  else return null;
+  const a2n=ankleVY-nose.y; if(a2n<40) return null;
+  const crownVY=nose.y-a2n*0.08;
+  const crownS=v2s(nose.x,crownVY,cp), ankleS=v2s(nose.x,ankleVY,cp);
+  const heightPx=ankleS.y-crownS.y;
+  const mmPx=PAPER[selectedPaper].h/paperH;
+  const heightCm=Math.round(heightPx*mmPx/10);
+  const ls=kps[KP.L_SHOULDER], rs=kps[KP.R_SHOULDER];
+  let shoulderCm=null;
+  if(ls?.score>MIN_KP_SCORE&&rs?.score>MIN_KP_SCORE) {
+    const lss=v2s(ls.x,ls.y,cp), rss=v2s(rs.x,rs.y,cp);
+    shoulderCm=Math.round(Math.abs(rss.x-lss.x)*mmPx/10);
+  }
+  return {heightCm, shoulderCm, crownSY:crownS.y, ankleSY:ankleS.y, noseSX:v2s(nose.x,nose.y,cp).x};
+}
+
+// ── STABILITY ─────────────────────────────────────────────────────────────────
+function trackStability(h) {
+  if(!h){heightHist=[];stableCount=0;return 0;}
+  heightHist.push(h); if(heightHist.length>30)heightHist.shift();
+  if(heightHist.length<5) return 0;
+  const mean=heightHist.reduce((a,b)=>a+b,0)/heightHist.length;
+  const std=Math.sqrt(heightHist.reduce((a,b)=>a+(b-mean)**2,0)/heightHist.length);
+  stableCount=std<2.5?Math.min(stableCount+1,STABLE_NEED):Math.max(stableCount-2,0);
+  return stableCount/STABLE_NEED;
+}
+
+// ── HELPERS ───────────────────────────────────────────────────────────────────
+function toImp(cm){const i=cm/2.54,f=Math.floor(i/12);return `${f}′ ${Math.round(i%12)}″`;}
+function getSize(h,s) {
+  if(s){if(s<39)return 'XS';if(s<44)return 'S / M';if(s<49)return 'M / L';return 'L / XL';}
+  if(h<162)return 'XS / S';if(h<172)return 'S / M';if(h<182)return 'M / L';return 'L / XL';
+}
+function getBuild(s,h){
+  if(!s||!h)return '—';const r=s/h;
+  return r<0.225?'Slim':r<0.265?'Regular':'Broad';
+}
+
+// ── DRAW ──────────────────────────────────────────────────────────────────────
+function drawPaperGuide(g, ok, pH) {
+  const r = 10;
+  // Outer glow when paper detected
+  if(ok) {
+    ctx.save();
+    ctx.shadowColor='rgba(232,96,76,0.5)'; ctx.shadowBlur=18;
+    ctx.strokeStyle=CORAL; ctx.lineWidth=2;
+    ctx.roundRect(g.x,g.y,g.w,g.h,r); ctx.stroke();
+    ctx.restore();
+    // subtle fill
+    ctx.fillStyle='rgba(232,96,76,0.06)';
+    ctx.roundRect(g.x,g.y,g.w,g.h,r); ctx.fill();
+  } else {
+    // dashed white guide
+    ctx.save();
+    ctx.setLineDash([6,5]);
+    ctx.strokeStyle='rgba(255,255,255,0.55)'; ctx.lineWidth=1.5;
+    ctx.roundRect(g.x,g.y,g.w,g.h,r); ctx.stroke();
+    ctx.restore();
+  }
+  // Label
+  ctx.fillStyle = ok ? CORAL : 'rgba(255,255,255,0.6)';
+  ctx.font='bold 11px Inter, sans-serif'; ctx.textAlign='center';
+  ctx.fillText(selectedPaper, g.x+g.w/2, g.y-8);
+}
+
+function drawMainFrame(ok, meas, stability) {
+  const W=oc.width, H=oc.height, top=instrCardH();
+  const fx=W*0.03, fy=top+8, fw=W*0.94, fh=H-fy-75, r=18;
+  const active = ok && meas;
+  ctx.save();
+  ctx.shadowColor=active?'rgba(232,96,76,0.45)':'rgba(255,255,255,0.2)';
+  ctx.shadowBlur=active?22:10;
+  ctx.strokeStyle=active?CORAL:'rgba(255,255,255,0.4)';
+  ctx.lineWidth=active?2:1.5;
+  ctx.roundRect(fx,fy,fw,fh,r); ctx.stroke();
+  ctx.restore();
+
+  // Success checkmark when stable
+  if(stability>=1.0) {
+    const cx=fx+fw/2, cy=fy+fh/2;
+    ctx.save();
+    ctx.fillStyle='rgba(76,175,80,0.9)';
+    ctx.beginPath(); ctx.arc(cx,cy,28,0,Math.PI*2); ctx.fill();
+    ctx.strokeStyle='white'; ctx.lineWidth=3; ctx.lineCap='round'; ctx.lineJoin='round';
+    ctx.beginPath(); ctx.moveTo(cx-12,cy); ctx.lineTo(cx-3,cy+10); ctx.lineTo(cx+13,cy-10); ctx.stroke();
+    ctx.restore();
+  }
+}
+
+function drawSkeleton(pose, cp) {
+  const kps=pose.keypoints;
+  ctx.strokeStyle='rgba(255,255,255,0.6)'; ctx.lineWidth=1.8;
+  BONES.forEach(([a,b])=>{
+    const ka=kps[a],kb=kps[b];
+    if(!ka||!kb||ka.score<MIN_KP_SCORE||kb.score<MIN_KP_SCORE) return;
+    const sa=v2s(ka.x,ka.y,cp), sb=v2s(kb.x,kb.y,cp);
+    ctx.beginPath(); ctx.moveTo(sa.x,sa.y); ctx.lineTo(sb.x,sb.y); ctx.stroke();
+  });
+  kps.forEach((kp,i)=>{
+    if(!kp||kp.score<MIN_KP_SCORE) return;
+    const s=v2s(kp.x,kp.y,cp);
+    ctx.beginPath(); ctx.arc(s.x,s.y,4,0,Math.PI*2);
+    ctx.fillStyle=i===KP.NOSE?CORAL:'rgba(255,255,255,0.85)'; ctx.fill();
+  });
+}
+
+function drawHeightLine(meas) {
+  const x=meas.noseSX-18, top=meas.crownSY, bot=meas.ankleSY;
+  ctx.strokeStyle=CORAL; ctx.lineWidth=2;
+  ctx.setLineDash([7,5]);
+  ctx.beginPath(); ctx.moveTo(x,top); ctx.lineTo(x,bot); ctx.stroke();
+  ctx.setLineDash([]);
+  ctx.beginPath();
+  ctx.moveTo(x-7,top); ctx.lineTo(x+7,top);
+  ctx.moveTo(x-7,bot); ctx.lineTo(x+7,bot);
+  ctx.stroke();
+  // Badge
+  const label=`${meas.heightCm} cm`;
+  ctx.font='700 15px Inter, sans-serif';
+  const tw=ctx.measureText(label).width;
+  const bx=x+10, by=(top+bot)/2-11, bw=tw+16, bh=26;
+  ctx.fillStyle='rgba(232,96,76,0.92)';
+  ctx.beginPath(); ctx.roundRect(bx,by,bw,bh,8); ctx.fill();
+  ctx.fillStyle='white'; ctx.textAlign='left';
+  ctx.fillText(label, bx+8, by+17);
+}
+
+// ── STATUS (instruction card) ─────────────────────────────────────────────────
+function updateInstrCard(ok, hasPose, stability) {
+  if(!ok) {
+    instrDot.className='';
+    instrText.textContent='Align paper with guide';
+    instrSub.textContent='Paper not detected yet';
+  } else if(!hasPose) {
+    instrDot.className='warn';
+    instrText.textContent='Paper ✓  —  Step into frame';
+    instrSub.textContent='Stand next to the paper';
+  } else if(stability<0.5) {
+    instrDot.className='warn';
+    instrText.textContent='Hold still…';
+    instrSub.textContent='Measuring…';
+  } else if(stability<1.0) {
+    instrDot.className='ok';
+    instrText.textContent='Looking good!';
+    instrSub.textContent='Almost done…';
+  } else {
+    instrDot.className='ok';
+    instrText.textContent='Great! We found you and the paper.';
+    instrSub.textContent='Capturing…';
+  }
+  stabFill.style.width=(stability*100)+'%';
+  stabFill.style.background=stability>0.8?'#4CAF50':CORAL;
+}
+
+// ── RENDER LOOP ───────────────────────────────────────────────────────────────
+function startLoop() {
+  hasAutoCaptured=false; stableCount=0; heightHist=[]; cachedPaperH=0;
+  function loop() {
+    rafId=requestAnimationFrame(loop);
+    frameIdx++;
+    ctx.clearRect(0,0,oc.width,oc.height);
+    const cp=getCrop(); if(!cp) return;
+    const g=guideRect();
+    if(frameIdx%5===0){const ph=detectPaperH(g);paperOK=ph>0;if(ph>0)cachedPaperH=ph;}
+    if(frameIdx%2===0) runPose();
+    const meas=calcMeas(latestPose,cachedPaperH);
+    const stab=trackStability(meas?.heightCm||null);
+    // Draw
+    drawMainFrame(paperOK, meas, stab);
+    drawPaperGuide(g, paperOK, cachedPaperH);
+    if(latestPose&&cp) drawSkeleton(latestPose,cp);
+    if(meas&&paperOK) drawHeightLine(meas);
+    updateInstrCard(paperOK, !!meas, stab);
+    if(!hasAutoCaptured&&paperOK&&meas&&stab>=1.0){hasAutoCaptured=true;doCapture(meas);}
+  }
+  loop();
+}
+
+// ── CAPTURE ───────────────────────────────────────────────────────────────────
+function doCapture(meas) {
+  flash.classList.add('on');
+  setTimeout(()=>flash.classList.remove('on'),120);
+  if('vibrate'in navigator) navigator.vibrate([40,20,80]);
+  cancelAnimationFrame(rafId); rafId=null;
+  showResult(meas);
+}
+
+captureBtn.addEventListener('click',()=>{
+  const m=calcMeas(latestPose,cachedPaperH||detectPaperH(guideRect()));
+  if(m){hasAutoCaptured=true;doCapture(m);}
+  else {
+    captureBtn.style.background='#cc3322';
+    setTimeout(()=>captureBtn.style.background='',280);
+  }
+});
+
+// ── RESULTS ───────────────────────────────────────────────────────────────────
+function showResult(m) {
+  document.getElementById('r-cm').textContent=m.heightCm;
+  document.getElementById('r-imp').textContent=toImp(m.heightCm);
+  document.getElementById('r-shoulder').textContent=m.shoulderCm?m.shoulderCm+' cm':'—';
+  document.getElementById('r-build').textContent=getBuild(m.shoulderCm,m.heightCm);
+  document.getElementById('r-paper').textContent=selectedPaper;
+  document.getElementById('r-size').textContent=getSize(m.heightCm,m.shoulderCm);
+  show('result');
+}
+
+document.getElementById('btn-retake').addEventListener('click',()=>{show('scan');startLoop();});
+document.getElementById('btn-home').addEventListener('click',()=>{
+  if(rafId){cancelAnimationFrame(rafId);rafId=null;}
+  if(mediaStream){mediaStream.getTracks().forEach(t=>t.stop());mediaStream=null;}
+  detector=null; show('welcome');
+});
+</script>
+</body>
+</html>
