@@ -421,6 +421,24 @@
       font-size: 14px; font-weight: 500; font-family: inherit;
       border: none; cursor: pointer;
     }
+    .btn-demo {
+      width: 100%; padding: 15px;
+      background: transparent; color: var(--coral);
+      font-size: 15px; font-weight: 600; font-family: inherit;
+      border: 1.5px solid var(--coral);
+      border-radius: 100px; cursor: pointer;
+      margin-top: 10px;
+      transition: background 0.15s, color 0.15s;
+    }
+    .btn-demo:active { background: var(--coral-dim); }
+    .demo-badge {
+      display: inline-block;
+      background: var(--yellow); color: #5C4800;
+      font-size: 11px; font-weight: 700;
+      letter-spacing: 0.08em; text-transform: uppercase;
+      padding: 3px 9px; border-radius: 100px;
+      margin-bottom: 14px;
+    }
   </style>
 </head>
 
@@ -521,6 +539,7 @@
 
     <div class="cta-wrap">
       <button class="btn-coral" id="btn-start">Start scanning →</button>
+      <button class="btn-demo" id="btn-demo">▷ &nbsp;Watch a demo</button>
     </div>
     <div class="legal">Requires camera permission · Best results under good lighting · HTTPS required</div>
   </div>
@@ -635,6 +654,9 @@
     <div class="result-actions">
       <button class="btn-coral" id="btn-retake">Scan again</button>
       <button class="btn-outline" id="btn-home">← Back to start</button>
+    </div>
+    <div id="demo-note" style="display:none; text-align:center; padding: 16px 20px 0; font-size:12px; color:var(--gray-text);">
+      ★ Demo mode — measurements are simulated
     </div>
 
   </div>
@@ -1037,12 +1059,131 @@ function showResult(m) {
   show('result');
 }
 
-document.getElementById('btn-retake').addEventListener('click',()=>{show('scan');startLoop();});
+document.getElementById('btn-retake').addEventListener('click',()=>{
+  if(isDemoMode) startDemo(); else { show('scan'); startLoop(); }
+});
 document.getElementById('btn-home').addEventListener('click',()=>{
   if(rafId){cancelAnimationFrame(rafId);rafId=null;}
   if(mediaStream){mediaStream.getTracks().forEach(t=>t.stop());mediaStream=null;}
-  detector=null; show('welcome');
+  detector=null; isDemoMode=false; show('welcome');
 });
+
+// ── DEMO MODE ─────────────────────────────────────────────────────────────────
+let isDemoMode = false;
+
+const DEMO_TIMELINE = [
+  { at:    0, paper:false, pose:false, stab:0    },
+  { at: 2200, paper:true,  pose:false, stab:0    },
+  { at: 4000, paper:true,  pose:true,  stab:0    },
+  { at: 5000, paper:true,  pose:true,  stab:0.35 },
+  { at: 6000, paper:true,  pose:true,  stab:0.70 },
+  { at: 6800, paper:true,  pose:true,  stab:0.92 },
+  { at: 7400, paper:true,  pose:true,  stab:1.0  },
+];
+
+function demoState(elapsed) {
+  let s = DEMO_TIMELINE[0];
+  for (const step of DEMO_TIMELINE) { if (elapsed >= step.at) s = step; }
+  return s;
+}
+
+// Identity crop so fake screen-coord keypoints pass through v2s unchanged
+function fakeCrop() {
+  return { sx:0, sy:0, sw:oc.width, sh:oc.height, scale:1 };
+}
+
+function buildFakePose() {
+  const W=oc.width, H=oc.height;
+  const cx=W*0.64, headY=H*0.15, ankleY=H*0.86;
+  const p = f => headY + (ankleY-headY)*f;
+  return { keypoints:[
+    {x:cx,          y:p(0.03),  score:0.95}, // nose
+    {x:cx-9,        y:p(0.01),  score:0.90}, // l_eye
+    {x:cx+9,        y:p(0.01),  score:0.90}, // r_eye
+    {x:cx-18,       y:p(0.03),  score:0.80}, // l_ear
+    {x:cx+18,       y:p(0.03),  score:0.80}, // r_ear
+    {x:cx-W*0.09,   y:p(0.18),  score:0.95}, // l_shoulder
+    {x:cx+W*0.09,   y:p(0.18),  score:0.95}, // r_shoulder
+    {x:cx-W*0.13,   y:p(0.35),  score:0.85}, // l_elbow
+    {x:cx+W*0.13,   y:p(0.35),  score:0.85}, // r_elbow
+    {x:cx-W*0.13,   y:p(0.50),  score:0.75}, // l_wrist
+    {x:cx+W*0.13,   y:p(0.50),  score:0.75}, // r_wrist
+    {x:cx-W*0.06,   y:p(0.52),  score:0.92}, // l_hip
+    {x:cx+W*0.06,   y:p(0.52),  score:0.92}, // r_hip
+    {x:cx-W*0.06,   y:p(0.70),  score:0.90}, // l_knee
+    {x:cx+W*0.06,   y:p(0.70),  score:0.90}, // r_knee
+    {x:cx-W*0.06,   y:ankleY,   score:0.92}, // l_ankle
+    {x:cx+W*0.06,   y:ankleY,   score:0.92}, // r_ankle
+  ]};
+}
+
+function drawDemoBackground() {
+  const W=oc.width, H=oc.height;
+  const grad=ctx.createLinearGradient(0,0,0,H);
+  grad.addColorStop(0,'#1e1a17'); grad.addColorStop(1,'#2d2820');
+  ctx.fillStyle=grad; ctx.fillRect(0,0,W,H);
+  // Floor line
+  ctx.strokeStyle='rgba(255,255,255,0.07)'; ctx.lineWidth=1;
+  ctx.beginPath(); ctx.moveTo(0,H*0.87); ctx.lineTo(W,H*0.87); ctx.stroke();
+}
+
+function drawDemoPaper(g) {
+  ctx.save();
+  ctx.shadowColor='rgba(255,255,255,0.2)'; ctx.shadowBlur=14;
+  ctx.fillStyle='rgba(245,245,242,0.95)';
+  ctx.beginPath(); ctx.roundRect(g.x+4,g.y+4,g.w-8,g.h-8,4); ctx.fill();
+  ctx.restore();
+}
+
+function startDemo() {
+  isDemoMode=true;
+  hasAutoCaptured=false; stableCount=0; heightHist=[]; cachedPaperH=0;
+  latestPose=null;
+  if(rafId){cancelAnimationFrame(rafId);rafId=null;}
+  show('scan');
+  document.getElementById('demo-note').style.display='none';
+
+  const t0=performance.now();
+
+  function loop() {
+    rafId=requestAnimationFrame(loop);
+    const elapsed=performance.now()-t0;
+    const s=demoState(elapsed);
+    const cp=fakeCrop();
+    const g=guideRect();
+
+    ctx.clearRect(0,0,oc.width,oc.height);
+    drawDemoBackground();
+
+    paperOK=s.paper;
+    cachedPaperH=s.paper ? g.h*0.90 : 0;
+    latestPose=s.pose ? buildFakePose() : null;
+
+    if(s.paper) drawDemoPaper(g);
+
+    const meas=calcMeas(latestPose, cachedPaperH);
+    drawMainFrame(s.paper, meas, s.stab);
+    drawPaperGuide(g, s.paper, cachedPaperH);
+    if(latestPose) drawSkeleton(latestPose, cp);
+    if(meas&&s.paper) drawHeightLine(meas);
+
+    updateInstrCard(s.paper, !!latestPose, s.stab);
+    stabFill.style.width=(s.stab*100)+'%';
+    stabFill.style.background=s.stab>0.8?'#4CAF50':CORAL;
+
+    if(!hasAutoCaptured&&s.stab>=1.0){
+      hasAutoCaptured=true;
+      setTimeout(()=>{
+        const demoMeas=meas||{heightCm:178,shoulderCm:44,crownSY:0,ankleSY:0,noseSX:0};
+        doCapture(demoMeas);
+        document.getElementById('demo-note').style.display='block';
+      }, 600);
+    }
+  }
+  loop();
+}
+
+document.getElementById('btn-demo').addEventListener('click', startDemo);
 </script>
 </body>
 </html>
