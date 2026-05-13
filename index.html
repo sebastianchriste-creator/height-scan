@@ -302,6 +302,25 @@
       text-align: center; padding: 0 20px;
     }
 
+    #scan-error {
+      display: none;
+      position: absolute; left: 16px; right: 16px; bottom: 108px;
+      background: rgba(180,28,18,0.93);
+      backdrop-filter: blur(6px);
+      color: #fff; border-radius: 12px;
+      padding: 11px 16px;
+      font-size: 13px; font-weight: 600; line-height: 1.45;
+      text-align: center; z-index: 30;
+    }
+    #scan-error.visible {
+      display: block;
+      animation: errSlide 0.22s ease;
+    }
+    @keyframes errSlide {
+      from { transform: translateY(8px); opacity: 0; }
+      to   { transform: translateY(0);   opacity: 1; }
+    }
+
     /* Flash */
     #flash {
       position: absolute; inset: 0;
@@ -672,6 +691,9 @@
       </div>
       <div id="instr-dot"></div>
     </div>
+
+    <!-- Error banner (shown when capture fails) -->
+    <div id="scan-error"></div>
 
     <!-- Bottom controls -->
     <div id="scan-bottom">
@@ -1224,9 +1246,17 @@ function updateInstrCard(ok, hasPose, stability) {
 // ── RENDER LOOP ───────────────────────────────────────────────────────────────
 function startLoop() {
   hasAutoCaptured=false; stableCount=0; heightHist=[]; cachedPaperH=0;
+  scanError.classList.remove('visible');
+  const loopStart = performance.now();
+  let timeoutShown = false;
   function loop() {
     rafId=requestAnimationFrame(loop);
     frameIdx++;
+    // Show error hint after 20 s if nothing has been captured yet
+    if (!hasAutoCaptured && !timeoutShown && performance.now()-loopStart > 20000) {
+      timeoutShown = true;
+      showScanError(diagnoseCaptureError());
+    }
     ctx.clearRect(0,0,oc.width,oc.height);
     const cp=getCrop(); if(!cp) return;
     const g=guideRect();
@@ -1266,13 +1296,28 @@ function doCapture(meas) {
   showResult(meas);
 }
 
+// ── SCAN ERROR BANNER ─────────────────────────────────────────────────────────
+const scanError = document.getElementById('scan-error');
+let scanErrorTimer = null;
+function showScanError(msg) {
+  clearTimeout(scanErrorTimer);
+  scanError.textContent = msg;
+  scanError.classList.add('visible');
+  scanErrorTimer = setTimeout(() => scanError.classList.remove('visible'), 4500);
+}
+function diagnoseCaptureError() {
+  if (!paperOK)           return 'Paper not detected — make sure it\'s visible inside the red guide box.';
+  if (!latestPose)        return 'Person not found — step fully into frame next to the paper.';
+  const kps = latestPose?.keypoints;
+  const ankleOK = kps && (kps[15]?.score > 0.2 || kps[16]?.score > 0.2);
+  if (!ankleOK)           return 'Feet not visible — step back so your whole body fits in frame.';
+  return 'Could not measure — hold still with the full body and paper in view.';
+}
+
 captureBtn.addEventListener('click',()=>{
   const m=calcMeas(latestPose,cachedPaperH||detectPaperH(guideRect()));
   if(m){hasAutoCaptured=true;doCapture(m);}
-  else {
-    captureBtn.style.background='#cc3322';
-    setTimeout(()=>captureBtn.style.background='',280);
-  }
+  else { showScanError(diagnoseCaptureError()); }
 });
 
 // ── RESULTS ───────────────────────────────────────────────────────────────────
