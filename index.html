@@ -740,6 +740,15 @@
       <div class="size-chip-icon">👕</div>
     </div>
 
+    <!-- Captured frame review -->
+    <div id="capture-review" style="display:none; padding:0 20px 4px;">
+      <div class="result-section-label" style="margin-bottom:8px;">Captured frame</div>
+      <img id="capture-thumb" src="" alt="Captured scan"
+           style="width:100%;border-radius:12px;cursor:pointer;display:block;"
+           onclick="document.getElementById('capture-modal').style.display='flex'">
+      <div style="font-size:11px;color:var(--gray-text);margin-top:6px;text-align:center;">Tap to enlarge · check if paper + full body were visible</div>
+    </div>
+
     <div class="result-actions">
       <button class="btn-coral" id="btn-retake">Scan again</button>
       <button class="btn-outline" id="btn-home">← Back to start</button>
@@ -763,6 +772,12 @@
     </div>
 
   </div>
+  <!-- Captured frame modal -->
+  <div id="capture-modal" style="display:none;position:fixed;inset:0;z-index:9999;background:rgba(0,0,0,0.92);align-items:center;justify-content:center;flex-direction:column;" onclick="this.style.display='none'">
+    <img id="capture-modal-img" src="" alt="Scan capture" style="max-width:100%;max-height:90vh;border-radius:8px;display:block;">
+    <div style="color:rgba(255,255,255,0.5);font-size:12px;margin-top:12px;">Tap anywhere to close</div>
+  </div>
+
   <!-- Widget mode bar (shown when ?widget param is present) -->
   <div id="widget-bar">
     <div class="wb-logo">
@@ -839,6 +854,7 @@ let frameIdx = 0, paperOK = false, cachedPaperH = 0;
 let heightHist = [], stableCount = 0;
 let hasAutoCaptured = false, rafId = null;
 let lastMeas = null;
+let capturedFrameUrl = null;
 
 // ── DOM ───────────────────────────────────────────────────────────────────────
 const video     = document.getElementById('video');
@@ -926,7 +942,7 @@ function instrCardH() {
 function guideRect() {
   const W=oc.width, H=oc.height, top=instrCardH();
   const availH = H - top - 90;   // leave room for bottom controls
-  const gH = availH * 0.42;
+  const gH = availH * 0.18;   // ~18% matches A4 appearance at 2–3 m distance
   const gW = gH * (PAPER[selectedPaper].w / PAPER[selectedPaper].h);
   return { x: W*0.04, y: top + availH*0.08, w: gW, h: gH };
 }
@@ -941,26 +957,21 @@ function detectPaperH(g) {
                         g.w/cp.scale, g.h/cp.scale, 0,0,pw,PH);
   const d = pctx.getImageData(0,0,pw,PH).data;
 
-  // Per-row average brightness
-  const rowB = new Float32Array(PH);
-  for (let y=0;y<PH;y++) {
-    let b=0;
-    for (let x=0;x<pw;x++) { const i=(y*pw+x)*4; b+=0.299*d[i]+0.587*d[i+1]+0.114*d[i+2]; }
-    rowB[y]=b/pw;
-  }
-
-  // Adaptive threshold: paper (white ~235) must be clearly brighter than the scene average.
-  // A beige/cream wall sits ~170-190; plain white wall ~240.
-  const sceneAvg = rowB.reduce((a,b)=>a+b,0)/PH;
-  // Require rows to be paper-white (≥200) AND meaningfully above the scene average.
-  const thresh = Math.max(200, sceneAvg + 22);
-
+  // Per-pixel threshold: white paper ~230+, beige/cream wall ~160–190, off-white wall ~200–215.
+  // Threshold 205 keeps wall out while catching paper in most indoor lighting.
+  // Only count a row as "paper" if ≥15% of its pixels are distinctly white —
+  // this works even when the paper is much smaller than the guide area.
   let f=-1, l=-1;
   for (let y=0;y<PH;y++) {
-    if (rowB[y] >= thresh) { if(f<0)f=y; l=y; }
+    let bright=0;
+    for (let x=0;x<pw;x++) {
+      const i=(y*pw+x)*4;
+      if (0.299*d[i]+0.587*d[i+1]+0.114*d[i+2] > 205) bright++;
+    }
+    if (bright/pw > 0.15) { if(f<0)f=y; l=y; }
   }
-  if (f<0 || l-f<15) return 0;
-  // If the bright band spans almost the whole guide it's a uniform bright wall, not paper.
+  if (f<0||l-f<12) return 0;
+  // If the bright span is >82% of the guide the whole area is white (wall not paper).
   if (l-f > PH*0.82) return 0;
   return (l-f)/scale;
 }
@@ -1234,7 +1245,20 @@ function startLoop() {
 }
 
 // ── CAPTURE ───────────────────────────────────────────────────────────────────
+function captureFrame() {
+  const cp = getCrop(); if (!cp) return null;
+  const cap = document.createElement('canvas');
+  cap.width = oc.width; cap.height = oc.height;
+  const c = cap.getContext('2d');
+  // Video with object-fit:cover crop
+  c.drawImage(video, cp.sx, cp.sy, cp.sw, cp.sh, 0, 0, cap.width, cap.height);
+  // Overlay (guide, skeleton, height line already drawn on oc)
+  c.drawImage(oc, 0, 0);
+  return cap.toDataURL('image/jpeg', 0.82);
+}
+
 function doCapture(meas) {
+  capturedFrameUrl = captureFrame();
   flash.classList.add('on');
   setTimeout(()=>flash.classList.remove('on'),120);
   if('vibrate'in navigator) navigator.vibrate([40,20,80]);
@@ -1260,6 +1284,15 @@ function showResult(m) {
   document.getElementById('r-build').textContent=getBuild(m.shoulderCm,m.heightCm);
   document.getElementById('r-paper').textContent=selectedPaper;
   document.getElementById('r-size').textContent=getSize(m.heightCm,m.shoulderCm);
+  // Captured frame
+  const review = document.getElementById('capture-review');
+  if (capturedFrameUrl) {
+    document.getElementById('capture-thumb').src = capturedFrameUrl;
+    document.getElementById('capture-modal-img').src = capturedFrameUrl;
+    review.style.display = 'block';
+  } else {
+    review.style.display = 'none';
+  }
   // Reset save section for this result
   document.getElementById('save-section').style.display='flex';
   document.getElementById('save-confirm').style.display='none';
