@@ -969,7 +969,7 @@ function instrCardH() {
 function guideRect() {
   const W=oc.width, H=oc.height, top=instrCardH();
   const availH = H - top - 90;   // leave room for bottom controls
-  const gH = availH * 0.18;   // ~18% matches A4 appearance at 2–3 m distance
+  const gH = availH * 0.24;   // ~24% matches A4 appearance at ~1.7 m distance
   const gW = gH * (PAPER[selectedPaper].w / PAPER[selectedPaper].h);
   return { x: W*0.04, y: top + availH*0.08, w: gW, h: gH };
 }
@@ -1097,6 +1097,45 @@ function getSize(h,s) {
 function getBuild(s,h){
   if(!s||!h)return '—';const r=s/h;
   return r<0.225?'Slim':r<0.265?'Regular':'Broad';
+}
+
+// ── PERSON GUIDE SILHOUETTE ───────────────────────────────────────────────────
+function drawPersonGuide() {
+  const W=oc.width, H=oc.height;
+  const top=instrCardH()+10, bot=H-95, h=bot-top;
+  // Centre-right: paper guide occupies left ~25%, person stands right of that
+  const cx=W*0.63;
+  const pTop=top+h*0.02, pBot=bot-h*0.01;
+  const pH2=pBot-pTop;
+
+  // Fades almost to nothing once pose is live
+  const alpha=latestPose?0.07:0.23;
+  ctx.save();
+  ctx.globalAlpha=alpha;
+  ctx.fillStyle='#ffffff';
+
+  // Head
+  const hR=pH2*0.085;
+  ctx.beginPath(); ctx.arc(cx,pTop+hR,hR,0,Math.PI*2); ctx.fill();
+
+  // Torso (rounded rect, shoulder-width tapering slightly)
+  const torsoW=pH2*0.21, torsoH=pH2*0.38, torsoY=pTop+hR*1.55;
+  ctx.beginPath();
+  ctx.roundRect(cx-torsoW/2, torsoY, torsoW, torsoH, hR*0.4);
+  ctx.fill();
+
+  // Arms (slim rounded rects either side)
+  const armW=torsoW*0.28, armH=torsoH*0.74, armY=torsoY+torsoH*0.04;
+  ctx.beginPath(); ctx.roundRect(cx-torsoW/2-armW-2, armY, armW, armH, armW*0.4); ctx.fill();
+  ctx.beginPath(); ctx.roundRect(cx+torsoW/2+2, armY, armW, armH, armW*0.4); ctx.fill();
+
+  // Legs
+  const legTop=torsoY+torsoH-2, legW=torsoW*0.36, legH=pBot-legTop;
+  const gap=torsoW*0.06;
+  ctx.beginPath(); ctx.roundRect(cx-gap-legW, legTop, legW, legH, [0,0,legW*0.4,legW*0.4]); ctx.fill();
+  ctx.beginPath(); ctx.roundRect(cx+gap, legTop, legW, legH, [0,0,legW*0.4,legW*0.4]); ctx.fill();
+
+  ctx.restore();
 }
 
 // ── DRAW ──────────────────────────────────────────────────────────────────────
@@ -1306,6 +1345,7 @@ function startLoop() {
     const meas=calcMeas(latestPose,cachedPaperH);
     const stab=trackStability(meas?.heightCm||null);
     // Draw
+    drawPersonGuide();
     drawPaperGuide(g, paperOK, cachedPaperH);
     if(latestPose&&cp) drawSkeleton(latestPose,cp);
     if(meas&&paperOK) drawHeightLine(meas);
