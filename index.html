@@ -940,16 +940,28 @@ function detectPaperH(g) {
   pctx.drawImage(video, g.x/cp.scale+cp.sx, g.y/cp.scale+cp.sy,
                         g.w/cp.scale, g.h/cp.scale, 0,0,pw,PH);
   const d = pctx.getImageData(0,0,pw,PH).data;
+
+  // Per-row average brightness
+  const rowB = new Float32Array(PH);
+  for (let y=0;y<PH;y++) {
+    let b=0;
+    for (let x=0;x<pw;x++) { const i=(y*pw+x)*4; b+=0.299*d[i]+0.587*d[i+1]+0.114*d[i+2]; }
+    rowB[y]=b/pw;
+  }
+
+  // Adaptive threshold: paper (white ~235) must be clearly brighter than the scene average.
+  // A beige/cream wall sits ~170-190; plain white wall ~240.
+  const sceneAvg = rowB.reduce((a,b)=>a+b,0)/PH;
+  // Require rows to be paper-white (≥200) AND meaningfully above the scene average.
+  const thresh = Math.max(200, sceneAvg + 22);
+
   let f=-1, l=-1;
   for (let y=0;y<PH;y++) {
-    let bright=0;
-    for (let x=0;x<pw;x++) {
-      const i=(y*pw+x)*4;
-      if (0.299*d[i]+0.587*d[i+1]+0.114*d[i+2] > 162) bright++;
-    }
-    if (bright/pw>0.42) { if(f<0)f=y; l=y; }
+    if (rowB[y] >= thresh) { if(f<0)f=y; l=y; }
   }
-  if (f<0||l-f<25) return 0;
+  if (f<0 || l-f<15) return 0;
+  // If the bright band spans almost the whole guide it's a uniform bright wall, not paper.
+  if (l-f > PH*0.82) return 0;
   return (l-f)/scale;
 }
 
