@@ -752,6 +752,11 @@
         <span class="detail-key">Paper used</span>
         <span class="detail-val" id="r-paper">A4</span>
       </div>
+      <div class="detail-row" id="r-photo-row" style="display:none;cursor:pointer;"
+           onclick="document.getElementById('capture-modal').style.display='flex'">
+        <span class="detail-key">Scan photo</span>
+        <span class="detail-val" style="color:var(--coral);">View →</span>
+      </div>
     </div>
 
     <div class="size-chip-wrap">
@@ -1331,12 +1336,15 @@ function showResult(m) {
   document.getElementById('r-size').textContent=getSize(m.heightCm,m.shoulderCm);
   // Captured frame
   const review = document.getElementById('capture-review');
+  const photoRow = document.getElementById('r-photo-row');
   if (capturedFrameUrl) {
     document.getElementById('capture-thumb').src = capturedFrameUrl;
     document.getElementById('capture-modal-img').src = capturedFrameUrl;
     review.style.display = 'block';
+    photoRow.style.display = 'flex';
   } else {
     review.style.display = 'none';
+    photoRow.style.display = 'none';
   }
   // Reset save section for this result
   document.getElementById('save-section').style.display='flex';
