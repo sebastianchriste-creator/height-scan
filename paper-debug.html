@@ -5,30 +5,27 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
   <meta name="mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-capable" content="yes">
-  <title>Paper Detection Debug</title>
+  <title>Paper Debug – Corners</title>
   <style>
     * { margin:0; padding:0; box-sizing:border-box; -webkit-tap-highlight-color:transparent; }
-    html,body { width:100%; height:100%; background:#111; overflow:hidden;
-                font-family:monospace; color:#eee; }
+    html,body { width:100%; height:100%; background:#111; overflow:hidden; font-family:monospace; color:#eee; }
     #wrap { position:relative; width:100%; height:100%; }
     video  { position:absolute; inset:0; width:100%; height:100%; object-fit:cover; }
     canvas { position:absolute; inset:0; width:100%; height:100%; }
 
-    /* bottom sheet */
     #panel {
       position:absolute; bottom:0; left:0; right:0;
-      background:rgba(0,0,0,0.82);
-      padding:10px 14px 20px;
-      display:grid; grid-template-columns: repeat(4,1fr); gap:6px 10px;
+      background:rgba(0,0,0,0.85);
+      padding:10px 14px 22px;
+      display:grid; grid-template-columns:repeat(4,1fr); gap:6px 10px;
     }
     .cell { display:flex; flex-direction:column; }
     .cell .lbl { font-size:9px; color:#888; letter-spacing:.06em; text-transform:uppercase; }
     .cell .val { font-size:15px; font-weight:700; margin-top:1px; }
-    .cell .val.ok  { color:#4CAF50; }
-    .cell .val.bad { color:#ff6b6b; }
-    .cell .val.dim { color:#aaa; }
+    .ok  { color:#4CAF50; }
+    .bad { color:#ff6b6b; }
+    .dim { color:#aaa; }
 
-    /* paper selector */
     #sel {
       position:absolute; top:max(20px,env(safe-area-inset-top)); right:14px;
       display:flex; gap:6px;
@@ -38,11 +35,10 @@
       color:#eee; font:bold 12px monospace; padding:6px 12px; border-radius:20px;
     }
     #sel button.active { background:#E8604C; border-color:#E8604C; }
-
     #title {
       position:absolute; top:max(20px,env(safe-area-inset-top)); left:14px;
       font-size:11px; font-weight:700; letter-spacing:.1em;
-      color:rgba(255,255,255,0.5); text-transform:uppercase;
+      color:rgba(255,255,255,0.45); text-transform:uppercase;
     }
   </style>
 </head>
@@ -51,236 +47,215 @@
   <video id="video" autoplay playsinline muted></video>
   <canvas id="oc"></canvas>
 </div>
-
-<div id="title">PAPER DEBUG</div>
-
+<div id="title">PAPER DEBUG – CORNERS</div>
 <div id="sel">
-  <button id="btn-a4"     class="active" onclick="setPaper('A4')">A4</button>
+  <button id="btn-a4" class="active" onclick="setPaper('A4')">A4</button>
   <button id="btn-letter" onclick="setPaper('Letter')">Letter</button>
 </div>
-
 <div id="panel">
-  <div class="cell"><div class="lbl">STATUS</div><div class="val" id="p-status">—</div></div>
+  <div class="cell"><div class="lbl">Status</div><div class="val" id="p-status">—</div></div>
   <div class="cell"><div class="lbl">pH (px)</div><div class="val" id="p-ph">—</div></div>
   <div class="cell"><div class="lbl">mm/px</div><div class="val" id="p-mmPx">—</div></div>
-  <div class="cell"><div class="lbl">pBri</div><div class="val" id="p-bri">—</div></div>
+  <div class="cell"><div class="lbl">Inner bri</div><div class="val" id="p-bri">—</div></div>
 
-  <div class="cell"><div class="lbl">maxB</div><div class="val" id="p-maxB">—</div></div>
-  <div class="cell"><div class="lbl">bThresh</div><div class="val" id="p-bThresh">—</div></div>
-  <div class="cell"><div class="lbl">topEdge</div><div class="val" id="p-topE">—</div></div>
-  <div class="cell"><div class="lbl">botEdge</div><div class="val" id="p-botE">—</div></div>
+  <div class="cell"><div class="lbl">spanH (det px)</div><div class="val" id="p-spanH">—</div></div>
+  <div class="cell"><div class="lbl">spanW (det px)</div><div class="val" id="p-spanW">—</div></div>
+  <div class="cell"><div class="lbl">detRatio</div><div class="val" id="p-ratio">—</div></div>
+  <div class="cell"><div class="lbl">expRatio</div><div class="val" id="p-exp">—</div></div>
 
-  <div class="cell" style="grid-column:span 2"><div class="lbl">pTop → pBot (screen px)</div><div class="val" id="p-bounds">—</div></div>
-  <div class="cell" style="grid-column:span 2"><div class="lbl">@ this mmPx, 180cm = ? px</div><div class="val" id="p-ref">—</div></div>
+  <div class="cell" style="grid-column:span 2">
+    <div class="lbl">Corner strengths (TL TR BL BR)</div>
+    <div class="val dim" id="p-corners">—</div>
+  </div>
+  <div class="cell" style="grid-column:span 2">
+    <div class="lbl">180cm = ? px @ this mmPx</div>
+    <div class="val" id="p-ref">—</div>
+  </div>
 </div>
 
 <script>
-// ── PAPER SIZES ───────────────────────────────────────────────────────────────
 const PAPER = { A4:{w:210,h:297}, Letter:{w:216,h:279} };
 let selectedPaper = 'A4';
-
 function setPaper(p) {
   selectedPaper = p;
   document.getElementById('btn-a4').classList.toggle('active', p==='A4');
   document.getElementById('btn-letter').classList.toggle('active', p==='Letter');
 }
 
-// ── CANVAS SETUP ──────────────────────────────────────────────────────────────
 const video = document.getElementById('video');
 const oc    = document.getElementById('oc');
 const ctx   = oc.getContext('2d');
 const pc    = document.createElement('canvas');
 const pctx  = pc.getContext('2d', {willReadFrequently:true});
 
-function resize() {
-  oc.width  = window.innerWidth;
-  oc.height = window.innerHeight;
-}
-window.addEventListener('resize', resize);
-resize();
+function resize() { oc.width=window.innerWidth; oc.height=window.innerHeight; }
+window.addEventListener('resize', resize); resize();
 
-// ── COORDINATE HELPERS ────────────────────────────────────────────────────────
 function getCrop() {
   const vw=video.videoWidth, vh=video.videoHeight, dw=oc.width, dh=oc.height;
   if (!vw||!vh) return null;
-  if (vw/vh > dw/dh) {
-    const s=dh/vh; return {sx:(vw-dw/s)/2, sy:0, sw:dw/s, sh:vh, scale:s};
-  }
-  const s=dw/vw; return {sx:0, sy:(vh-dh/s)/2, sw:vw, sh:dh/s, scale:s};
+  if (vw/vh>dw/dh) { const s=dh/vh; return {sx:(vw-dw/s)/2,sy:0,sw:dw/s,sh:vh,scale:s}; }
+  const s=dw/vw; return {sx:0,sy:(vh-dh/s)/2,sw:vw,sh:dh/s,scale:s};
 }
-
-// Guide rect: larger than the main app (35% of usable height) for easier positioning
-function panelH() { return document.getElementById('panel').offsetHeight || 140; }
+function panelH() { return document.getElementById('panel').offsetHeight||140; }
 function guideRect() {
-  const W=oc.width, H=oc.height;
-  const top = 70;
-  const availH = H - top - panelH() - 20;
-  const gH = availH * 0.60;   // big guide for paper-only mode
-  const gW = gH * (PAPER[selectedPaper].w / PAPER[selectedPaper].h);
-  return { x: W*0.05, y: top + availH*0.04, w: gW, h: gH };
+  const W=oc.width, H=oc.height, top=70, availH=H-top-panelH()-20;
+  const gH=availH*0.60, gW=gH*(PAPER[selectedPaper].w/PAPER[selectedPaper].h);
+  return {x:W*0.05, y:top+availH*0.04, w:gW, h:gH};
 }
 
-// ── DETECTION STATE ───────────────────────────────────────────────────────────
-const dbg = {
-  ok:false, pH:0, mmPx:0,
-  pTop:-1, pBot:-1, pBri:0,
-  maxB:0, bThresh:0,
-  approxTop:-1, approxBot:-1,
-  topE:0, botE:0,
-  rowBs:null, rowEs:null,
-  PH:220
-};
-
-// ── INNER BRIGHTNESS ──────────────────────────────────────────────────────────
-function _innerBrightness(L, pw, topY, botY, x0, x1) {
-  const span=botY-topY;
-  const y0=topY+Math.round(span*0.15), y1=botY-Math.round(span*0.15);
-  let s=0, n=0;
-  for (let y=y0; y<y1; y++)
-    for (let x=x0; x<x1; x++) { s+=L[y*pw+x]; n++; }
-  return n>0 ? s/n : 0;
+function _innerBrightness(L,pw,y0,y1,x0,x1) {
+  const sy=y0+Math.round((y1-y0)*0.15), ey=y1-Math.round((y1-y0)*0.15);
+  const sx=x0+Math.round((x1-x0)*0.10), ex=x1-Math.round((x1-x0)*0.10);
+  let s=0,n=0;
+  for (let y=sy;y<ey;y++) for (let x=sx;x<ex;x++){s+=L[y*pw+x];n++;}
+  return n>0?s/n:0;
 }
 
-// ── PAPER DETECTION ───────────────────────────────────────────────────────────
-function detectPaperH(g) {
-  dbg.ok=false; dbg.pH=0; dbg.pTop=-1; dbg.pBot=-1; dbg.pBri=0;
-  dbg.maxB=0; dbg.bThresh=0; dbg.approxTop=-1; dbg.approxBot=-1;
-  dbg.topE=0; dbg.botE=0; dbg.rowBs=null; dbg.rowEs=null;
+// ── CORNER DETECTION ──────────────────────────────────────────────────────────
+// Corner response R = |Gx|·|Gy| — fires where BOTH horizontal and vertical
+// gradients are strong simultaneously. This is exactly the property that
+// distinguishes paper corners from a plain wall (which has neither gradient)
+// or a straight edge (which has only one gradient direction).
+//
+// Detection steps:
+//  1. Compute Sobel Gx, Gy on the guide-rect sample
+//  2. Compute R = |Gx|·|Gy| per pixel
+//  3. NMS (7×7 neighbourhood) → candidate corner peaks
+//  4. Assign best peak per quadrant (TL/TR/BL/BR) using brightness centroid as
+//     the quadrant centre — handles off-centre paper
+//  5. From the 4 corners derive spanH, spanW → pH via aspect ratio
+// ─────────────────────────────────────────────────────────────────────────────
+let lastResult = null;
 
-  const cp=getCrop();
-  if (!cp||!video.videoWidth) return 0;
+function detectPaperCorners(g) {
+  lastResult = null;
+  const cp = getCrop();
+  if (!cp||!video.videoWidth) return null;
 
   const PH=220, scale=PH/g.h, pw=Math.round(g.w*scale);
-  dbg.PH=PH;
   pc.width=pw; pc.height=PH;
   pctx.drawImage(video,
     g.x/cp.scale+cp.sx, g.y/cp.scale+cp.sy,
-    g.w/cp.scale,        g.h/cp.scale,
+    g.w/cp.scale, g.h/cp.scale,
     0,0,pw,PH);
-  const d=pctx.getImageData(0,0,pw,PH).data;
+  const d = pctx.getImageData(0,0,pw,PH).data;
 
   // Luma
-  const L=new Float32Array(pw*PH);
+  const L = new Float32Array(pw*PH);
   for (let i=0;i<pw*PH;i++)
     L[i]=0.299*d[i*4]+0.587*d[i*4+1]+0.114*d[i*4+2];
 
-  const cx0=Math.round(pw*0.10), cx1=Math.round(pw*0.90), cxw=cx1-cx0;
-  const margin=Math.round(PH*0.04);
-
-  // ── Row brightness profile ────────────────────────────────────────────────
-  const rowB=new Float32Array(PH);
-  for (let y=0;y<PH;y++) {
-    let s=0;
-    for (let x=cx0;x<cx1;x++) s+=L[y*pw+x];
-    rowB[y]=s/cxw;
-  }
-  const rowBs=new Float32Array(PH);
-  rowBs[0]=rowB[0]; rowBs[PH-1]=rowB[PH-1];
-  for (let y=1;y<PH-1;y++) rowBs[y]=(rowB[y-1]+rowB[y]+rowB[y+1])/3;
-  dbg.rowBs=rowBs;
-
-  let maxB=0;
-  for (let y=margin;y<PH-margin;y++) maxB=Math.max(maxB,rowBs[y]);
-  dbg.maxB=Math.round(maxB);
-  if (maxB<100) return 0;
-
-  const bThresh=Math.max(maxB-30,100);
-  dbg.bThresh=Math.round(bThresh);
-
-  let approxTop=-1, approxBot=-1;
-  for (let y=margin;y<PH-margin;y++)
-    if (rowBs[y]>=bThresh){approxTop=y;break;}
-  for (let y=PH-margin-1;y>=margin;y--)
-    if (rowBs[y]>=bThresh){approxBot=y;break;}
-  dbg.approxTop=approxTop; dbg.approxBot=approxBot;
-  if (approxTop<0||approxBot<=approxTop+8) return 0;
-
-  // ── Sobel row edge energy ─────────────────────────────────────────────────
-  const rowE=new Float32Array(PH);
+  // Sobel Gx (vertical edges) and Gy (horizontal edges)
+  const Gx=new Float32Array(pw*PH), Gy=new Float32Array(pw*PH);
   for (let y=1;y<PH-1;y++) {
-    let s=0;
-    for (let x=cx0;x<cx1;x++) {
-      const gy=(L[(y+1)*pw+x-1]+2*L[(y+1)*pw+x]+L[(y+1)*pw+x+1]
-               -L[(y-1)*pw+x-1]-2*L[(y-1)*pw+x]-L[(y-1)*pw+x+1])/4;
-      s+=Math.abs(gy);
+    for (let x=1;x<pw-1;x++) {
+      const i=y*pw+x;
+      Gy[i]=(L[(y+1)*pw+x-1]+2*L[(y+1)*pw+x]+L[(y+1)*pw+x+1]
+             -L[(y-1)*pw+x-1]-2*L[(y-1)*pw+x]-L[(y-1)*pw+x+1])/4;
+      Gx[i]=(L[(y-1)*pw+x+1]+2*L[y*pw+x+1]+L[(y+1)*pw+x+1]
+             -L[(y-1)*pw+x-1]-2*L[y*pw+x-1]-L[(y+1)*pw+x-1])/4;
     }
-    rowE[y]=s/cxw;
   }
-  const rowEs=new Float32Array(PH);
-  for (let y=1;y<PH-1;y++) rowEs[y]=(rowE[y-1]+rowE[y]+rowE[y+1])/3;
-  dbg.rowEs=rowEs;
 
-  // ── Refine boundaries with edge peak near brightness bounds ──────────────
-  const WIN=Math.round(PH*0.10);
-  let topY=approxTop, botY=approxBot, topE=0, botE=0;
-  for (let y=Math.max(1,approxTop-WIN);y<=Math.min(PH-2,approxTop+WIN);y++)
-    if (rowEs[y]>topE){topE=rowEs[y];topY=y;}
-  for (let y=Math.max(1,approxBot-WIN);y<=Math.min(PH-2,approxBot+WIN);y++)
-    if (rowEs[y]>botE){botE=rowEs[y];botY=y;}
-  if (topE<1.2) topY=approxTop;
-  if (botE<1.2) botY=approxBot;
-  dbg.topE=+topE.toFixed(1); dbg.botE=+botE.toFixed(1);
+  // Corner response
+  const R=new Float32Array(pw*PH);
+  let maxR=0;
+  for (let i=0;i<pw*PH;i++) {
+    R[i]=Math.abs(Gx[i])*Math.abs(Gy[i]);
+    if (R[i]>maxR) maxR=R[i];
+  }
 
-  if (botY<=topY+8) return 0;
-  const spanH=botY-topY;
-  if (spanH>PH*0.96) return 0;
+  if (maxR<4) return null; // nothing interesting at all
 
-  // ── Inner brightness ──────────────────────────────────────────────────────
-  const inner=_innerBrightness(L,pw,topY,botY,cx0,cx1);
-  dbg.pBri=Math.round(inner);
-  if (inner<100) return 0;
-
-  // ── Vertical edges for aspect-ratio cross-check ───────────────────────────
-  const colE=new Float32Array(pw);
-  for (let x=1;x<pw-1;x++) {
-    let s=0,n=0;
-    for (let y=topY;y<=botY;y++) {
-      const gx=(L[(y-1)*pw+x+1]+2*L[y*pw+x+1]+L[(y+1)*pw+x+1]
-               -L[(y-1)*pw+x-1]-2*L[y*pw+x-1]-L[(y+1)*pw+x-1])/4;
-      s+=Math.abs(gx);n++;
+  // NMS with 7×7 window, keep points above 5% of global max
+  const NR=7, minR=maxR*0.05;
+  const peaks=[];
+  for (let y=NR;y<PH-NR;y++) {
+    for (let x=NR;x<pw-NR;x++) {
+      const r=R[y*pw+x];
+      if (r<minR) continue;
+      let best=true;
+      outer: for (let dy=-NR;dy<=NR;dy++) {
+        for (let dx=-NR;dx<=NR;dx++) {
+          if (dx===0&&dy===0) continue;
+          if (R[(y+dy)*pw+(x+dx)]>r){best=false;break outer;}
+        }
+      }
+      if (best) peaks.push({x,y,r});
     }
-    colE[x]=n>0?s/n:0;
   }
-  let lftX=-1,rgtX=-1;
-  for (let x=1;x<Math.round(pw*0.65);x++)
-    if (colE[x]>2.0){lftX=x;break;}
-  for (let x=pw-2;x>=Math.round(pw*0.35);x--)
-    if (colE[x]>2.0){rgtX=x;break;}
+  if (peaks.length<4) return null;
 
-  dbg.pTop=g.y+topY/scale;
-  dbg.pBot=g.y+botY/scale;
+  peaks.sort((a,b)=>b.r-a.r);
 
+  // Brightness centroid — used as dynamic quadrant centre so off-centre paper still works
+  let cx=0,cy=0,tb=0;
+  for (let y=0;y<PH;y++) for (let x=0;x<pw;x++){const b=L[y*pw+x];cx+=x*b;cy+=y*b;tb+=b;}
+  if (tb>0){cx/=tb;cy/=tb;}else{cx=pw/2;cy=PH/2;}
+
+  // Best corner per quadrant relative to brightness centroid
+  const Q=[null,null,null,null]; // TL,TR,BL,BR
+  for (const p of peaks) {
+    const q=(p.y>=cy?2:0)+(p.x>=cx?1:0);
+    if (!Q[q]||p.r>Q[q].r) Q[q]=p;
+  }
+  if (Q.some(c=>!c)) return null;
+
+  const [tl,tr,bl,br]=Q;
+
+  // Sanity: corners must form a plausible quadrilateral
+  if (tr.x<=tl.x||br.x<=bl.x||bl.y<=tl.y||br.y<=tr.y) return null;
+
+  const spanH=((bl.y-tl.y)+(br.y-tr.y))/2;
+  const spanW=((tr.x-tl.x)+(br.x-bl.x))/2;
+  if (spanH<10||spanW<10) return null;
+
+  // Inner brightness: the region enclosed by the 4 corners must be bright (=paper)
+  const x0=Math.min(tl.x,bl.x), x1=Math.max(tr.x,br.x);
+  const y0=Math.min(tl.y,tr.y), y1=Math.max(bl.y,br.y);
+  const inner=_innerBrightness(L,pw,y0,y1,x0,x1);
+  if (inner<90) return null;
+
+  // Aspect ratio — derive pH from both H and W, weight by which is more reliable
   const expRatio=PAPER[selectedPaper].w/PAPER[selectedPaper].h;
-  let ph=0;
-  if (lftX>=0&&rgtX>lftX) {
-    const spanW=rgtX-lftX;
-    const detRatio=spanW/spanH;
-    if (Math.abs(detRatio-expRatio)/expRatio<0.30) ph=spanH/scale;
-    else {
-      const spanH_fromW=spanW/expRatio;
-      if (Math.abs(spanH_fromW-spanH)/spanH<0.35) ph=spanH/scale;
-      else if (inner>=150) ph=spanH/scale;
-    }
+  const detRatio=spanW/spanH;
+  // pH in screen pixels
+  let pH;
+  if (Math.abs(detRatio-expRatio)/expRatio<0.25) {
+    // Both agree — use H directly (more pixels → more accurate for portrait paper)
+    pH=spanH/scale;
   } else {
-    if (inner>=130) ph=spanH/scale;
+    // Disagree — use whichever gives an answer closer to expected aspect ratio
+    const pH_fromH=spanH/scale;
+    const pH_fromW=(spanW/expRatio)/scale;
+    // Pick the one whose implied ratio is closer to expected
+    const errH=Math.abs((spanW/spanH)-expRatio);
+    const errW=Math.abs((spanW/(spanW/expRatio))-expRatio); // always 0, so prefer W
+    pH = errH<0.15 ? pH_fromH : pH_fromW;
   }
 
-  if (ph>0) {
-    dbg.pH=ph; dbg.mmPx=PAPER[selectedPaper].h/ph; dbg.ok=true;
-  }
-  return ph;
+  const corners4=[
+    {x:g.x+tl.x/pw*g.w, y:g.y+tl.y/PH*g.h, r:tl.r, lbl:'TL'},
+    {x:g.x+tr.x/pw*g.w, y:g.y+tr.y/PH*g.h, r:tr.r, lbl:'TR'},
+    {x:g.x+bl.x/pw*g.w, y:g.y+bl.y/PH*g.h, r:bl.r, lbl:'BL'},
+    {x:g.x+br.x/pw*g.w, y:g.y+br.y/PH*g.h, r:br.r, lbl:'BR'},
+  ];
+
+  return {pH, spanH, spanW, detRatio, expRatio, inner:Math.round(inner),
+          mmPx:PAPER[selectedPaper].h/pH, corners:corners4, maxR, scale};
 }
 
 // ── DRAW ──────────────────────────────────────────────────────────────────────
-function draw() {
+function draw(res) {
   const g=guideRect();
   ctx.clearRect(0,0,oc.width,oc.height);
-  const ok=dbg.ok;
+  const ok=!!res;
 
   // Guide rect
   ctx.save();
   if (!ok) ctx.setLineDash([6,5]);
-  ctx.strokeStyle=ok?'#4CAF50':'rgba(255,255,255,0.45)';
+  ctx.strokeStyle=ok?'#4CAF50':'rgba(255,255,255,0.4)';
   ctx.lineWidth=2.5;
   ctx.beginPath(); ctx.roundRect(g.x,g.y,g.w,g.h,8); ctx.stroke();
   ctx.setLineDash([]);
@@ -288,172 +263,103 @@ function draw() {
   ctx.beginPath(); ctx.roundRect(g.x,g.y,g.w,g.h,8); ctx.fill();
   ctx.restore();
 
-  // Label inside guide rect
-  ctx.fillStyle=ok?'#4CAF50':'rgba(255,255,255,0.55)';
-  ctx.font='bold 13px monospace';
-  ctx.textAlign='center';
-  ctx.fillText(selectedPaper+(ok?' ✓':''), g.x+g.w/2, g.y+18);
+  // Label
+  ctx.fillStyle=ok?'#4CAF50':'rgba(255,255,255,0.5)';
+  ctx.font='bold 13px monospace'; ctx.textAlign='center';
+  ctx.fillText(selectedPaper+(ok?' ✓':''), g.x+g.w/2, g.y+20);
 
-  // Helper text
   if (!ok) {
-    ctx.fillStyle='rgba(255,255,255,0.35)';
-    ctx.font='11px monospace';
-    ctx.textAlign='center';
+    ctx.fillStyle='rgba(255,255,255,0.3)';
+    ctx.font='11px monospace'; ctx.textAlign='center';
     ctx.fillText('Place paper inside this box', g.x+g.w/2, g.y+g.h/2);
   }
 
-  // ── Detected paper edge lines ─────────────────────────────────────────────
-  if (dbg.pTop>=0) {
+  if (res) {
+    const C=res.corners; // [TL,TR,BL,BR]
+
+    // Draw paper outline (quadrilateral connecting the 4 corners)
     ctx.save();
-    ctx.strokeStyle='#7ec8e3'; ctx.lineWidth=2;
+    ctx.strokeStyle='rgba(126,200,227,0.9)'; ctx.lineWidth=2;
     ctx.setLineDash([5,4]);
-    // top edge
     ctx.beginPath();
-    ctx.moveTo(g.x-4, dbg.pTop); ctx.lineTo(g.x+g.w+4, dbg.pTop);
-    ctx.stroke();
-    // bottom edge
-    ctx.beginPath();
-    ctx.moveTo(g.x-4, dbg.pBot); ctx.lineTo(g.x+g.w+4, dbg.pBot);
-    ctx.stroke();
+    ctx.moveTo(C[0].x,C[0].y); // TL
+    ctx.lineTo(C[1].x,C[1].y); // TR
+    ctx.lineTo(C[3].x,C[3].y); // BR
+    ctx.lineTo(C[2].x,C[2].y); // BL
+    ctx.closePath(); ctx.stroke();
     ctx.setLineDash([]);
-    // Labels
-    ctx.fillStyle='#7ec8e3'; ctx.font='10px monospace'; ctx.textAlign='left';
-    ctx.fillText(`▲ ${dbg.pTop.toFixed(0)}`, g.x+g.w+6, dbg.pTop+4);
-    ctx.fillText(`▼ ${dbg.pBot.toFixed(0)}`, g.x+g.w+6, dbg.pBot+4);
-    // detected height bracket
-    ctx.strokeStyle='rgba(126,200,227,0.4)'; ctx.lineWidth=1;
-    ctx.beginPath();
-    ctx.moveTo(g.x-12, dbg.pTop); ctx.lineTo(g.x-12, dbg.pBot);
-    ctx.stroke();
-    ctx.fillStyle='rgba(126,200,227,0.7)'; ctx.font='10px monospace';
+    ctx.restore();
+
+    // Corner dots + labels
+    ctx.save();
+    C.forEach(c=>{
+      const strong=c.r>res.maxR*0.15;
+      ctx.beginPath();
+      ctx.arc(c.x,c.y,6,0,Math.PI*2);
+      ctx.fillStyle=strong?'#7ec8e3':'rgba(126,200,227,0.4)';
+      ctx.fill();
+      ctx.strokeStyle='#fff'; ctx.lineWidth=1;
+      ctx.stroke();
+      ctx.fillStyle='#fff'; ctx.font='bold 10px monospace';
+      ctx.textAlign='center'; ctx.textBaseline='middle';
+      ctx.fillText(c.lbl,c.x,c.y-14);
+    });
+    ctx.restore();
+
+    // pH bracket (left side)
+    const ty=C[0].y, by=C[2].y;
+    ctx.save();
+    ctx.strokeStyle='rgba(126,200,227,0.5)'; ctx.lineWidth=1;
+    ctx.beginPath(); ctx.moveTo(g.x-14,ty); ctx.lineTo(g.x-14,by); ctx.stroke();
+    ctx.fillStyle='rgba(126,200,227,0.9)'; ctx.font='10px monospace';
     ctx.textAlign='right';
-    ctx.fillText(`${dbg.pH.toFixed(0)}px`, g.x-15, (dbg.pTop+dbg.pBot)/2+4);
+    ctx.fillText(`${res.pH.toFixed(0)}px`, g.x-17, (ty+by)/2+4);
     ctx.restore();
   }
 
-  // ── Brightness profile chart (right of guide rect) ────────────────────────
-  if (dbg.rowBs) {
-    const PH=dbg.PH;
-    const chartX=Math.min(g.x+g.w+44, oc.width-100);
-    const chartW=80;
-    const chartY=g.y, chartH=g.h;
+  // ── Data panel ──────────────────────────────────────────────────────────
+  const set=(id,v,cls)=>{ const e=document.getElementById(id); e.textContent=v; e.className='val '+(cls||'dim'); };
 
-    // Background
-    ctx.fillStyle='rgba(0,0,0,0.55)';
-    ctx.beginPath(); ctx.roundRect(chartX-2,chartY,chartW+4,chartH,4); ctx.fill();
-
-    // Row labels
-    ctx.fillStyle='rgba(255,255,255,0.3)'; ctx.font='8px monospace';
-    ctx.textAlign='center';
-    ctx.fillText('B  E', chartX+chartW/2, chartY-3);
-
-    // Brightness bars (left half of chart)
-    const bHalf=chartW*0.55;
-    for (let y=0;y<PH;y++) {
-      const sy=chartY+(y/PH)*chartH;
-      const ny=chartY+((y+1)/PH)*chartH;
-      const h=Math.max(0.5, ny-sy-0.3);
-      const b=dbg.rowBs[y];
-      const w=(b/255)*bHalf;
-      const isPaper=b>=dbg.bThresh;
-      ctx.fillStyle=isPaper?'rgba(76,175,80,0.75)':'rgba(160,160,160,0.25)';
-      ctx.fillRect(chartX, sy, w, h);
-    }
-
-    // Threshold vertical line on brightness chart
-    const thW=(dbg.bThresh/255)*bHalf;
-    ctx.strokeStyle='rgba(237,217,78,0.7)'; ctx.lineWidth=1; ctx.setLineDash([2,2]);
-    ctx.beginPath(); ctx.moveTo(chartX+thW,chartY); ctx.lineTo(chartX+thW,chartY+chartH); ctx.stroke();
-    ctx.setLineDash([]);
-
-    // Edge bars (right half of chart, normalised to max=12)
-    if (dbg.rowEs) {
-      const eHalf=chartW*0.40;
-      const eOriginX=chartX+chartW;
-      const maxE=12;
-      for (let y=0;y<PH;y++) {
-        const sy=chartY+(y/PH)*chartH;
-        const ny=chartY+((y+1)/PH)*chartH;
-        const h=Math.max(0.5,ny-sy-0.3);
-        const e=Math.min(dbg.rowEs[y],maxE);
-        const w=(e/maxE)*eHalf;
-        ctx.fillStyle='rgba(232,96,76,0.75)';
-        ctx.fillRect(eOriginX-w, sy, w, h);
-      }
-    }
-
-    // approxTop / approxBot horizontal marks on chart
-    if (dbg.approxTop>=0) {
-      const ay=chartY+(dbg.approxTop/PH)*chartH;
-      const by=chartY+(dbg.approxBot/PH)*chartH;
-      ctx.strokeStyle='rgba(237,217,78,0.8)'; ctx.lineWidth=1.5;
-      ctx.beginPath(); ctx.moveTo(chartX,ay); ctx.lineTo(chartX+chartW,ay); ctx.stroke();
-      ctx.beginPath(); ctx.moveTo(chartX,by); ctx.lineTo(chartX+chartW,by); ctx.stroke();
-    }
-
-    // Axis labels
-    ctx.fillStyle='rgba(76,175,80,0.7)'; ctx.font='8px monospace';
-    ctx.textAlign='left';
-    ctx.fillText('B', chartX+2, chartY+chartH-3);
-    ctx.fillStyle='rgba(232,96,76,0.7)';
-    ctx.textAlign='right';
-    ctx.fillText('E', chartX+chartW-2, chartY+chartH-3);
-  }
-
-  // ── Data panel ───────────────────────────────────────────────────────────
-  const el=(id,v,cls)=>{
-    const e=document.getElementById(id);
-    e.textContent=v;
-    e.className='val '+(cls||'dim');
-  };
-
-  el('p-status', ok?'PAPER OK':'NO PAPER', ok?'ok':'bad');
-  el('p-ph',     ok?dbg.pH.toFixed(1)+' px':'—', ok?'ok':'bad');
-  el('p-mmPx',   ok?dbg.mmPx.toFixed(2)+' mm/px':'—', ok?'ok':'bad');
-  el('p-bri',    dbg.pBri+'/255', dbg.pBri>=130?'ok':dbg.pBri>=100?'dim':'bad');
-  el('p-maxB',   dbg.maxB||'—', dbg.maxB>=130?'ok':dbg.maxB>=100?'dim':'bad');
-  el('p-bThresh',dbg.bThresh||'—','dim');
-  el('p-topE',   dbg.topE?dbg.topE.toFixed(1):'—', dbg.topE>=1.2?'ok':'dim');
-  el('p-botE',   dbg.botE?dbg.botE.toFixed(1):'—', dbg.botE>=1.2?'ok':'dim');
-
-  if (dbg.pTop>=0) {
-    el('p-bounds', `${dbg.pTop.toFixed(0)} → ${dbg.pBot.toFixed(0)} (span ${dbg.pH.toFixed(0)}px)`, 'ok');
+  if (res) {
+    const ratioOk=Math.abs(res.detRatio-res.expRatio)/res.expRatio<0.25;
+    set('p-status','PAPER OK','ok');
+    set('p-ph',   res.pH.toFixed(1)+' px','ok');
+    set('p-mmPx', res.mmPx.toFixed(2)+' mm/px','ok');
+    set('p-bri',  res.inner+'/255', res.inner>=130?'ok':res.inner>=90?'dim':'bad');
+    set('p-spanH',res.spanH.toFixed(0)+' px','dim');
+    set('p-spanW',res.spanW.toFixed(0)+' px','dim');
+    set('p-ratio',res.detRatio.toFixed(3), ratioOk?'ok':'bad');
+    set('p-exp',  res.expRatio.toFixed(3),'dim');
+    const cstr=res.corners.map(c=>c.r.toFixed(0)).join(' ');
+    set('p-corners',cstr,'dim');
+    const ref=Math.round(1800/res.mmPx);
+    set('p-ref', ref+' px', ref>200&&ref<900?'ok':'bad');
   } else {
-    el('p-bounds', '—', 'bad');
-  }
-
-  if (ok && dbg.mmPx>0) {
-    const ref180=Math.round(1800/dbg.mmPx);
-    el('p-ref', `${ref180} px`, ref180>300&&ref180<1000?'ok':'bad');
-  } else {
-    el('p-ref','—','dim');
+    ['p-status','p-ph','p-mmPx','p-bri','p-spanH','p-spanW','p-ratio','p-exp','p-corners','p-ref']
+      .forEach(id=>set(id,'—','bad'));
+    set('p-status','NO PAPER','bad');
+    set('p-exp', PAPER[selectedPaper].w/PAPER[selectedPaper].h|0===0
+        ? (PAPER[selectedPaper].w/PAPER[selectedPaper].h).toFixed(3) : '—', 'dim');
   }
 }
 
-// ── MAIN LOOP ─────────────────────────────────────────────────────────────────
+// ── LOOP ─────────────────────────────────────────────────────────────────────
 async function start() {
   try {
     const stream=await navigator.mediaDevices.getUserMedia({
-      video:{facingMode:'environment', width:{ideal:1920}, height:{ideal:1080}},
-      audio:false
-    });
-    video.srcObject=stream;
-    await video.play();
-  } catch(e) {
-    alert('Camera error: '+e.message);
-    return;
-  }
+      video:{facingMode:'environment',width:{ideal:1920},height:{ideal:1080}},audio:false});
+    video.srcObject=stream; await video.play();
+  } catch(e) { alert('Camera: '+e.message); return; }
 
   function loop() {
     if (video.videoWidth>0) {
-      detectPaperH(guideRect());
-      draw();
+      const res=detectPaperCorners(guideRect());
+      draw(res);
     }
     requestAnimationFrame(loop);
   }
   loop();
 }
-
 start();
 </script>
 </body>
