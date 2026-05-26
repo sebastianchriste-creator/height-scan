@@ -1072,9 +1072,14 @@ function calcMeas(pose, paperH) {
   else if(ra?.score>MIN_KP_SCORE) ankleVY=ra.y;
   else return null;
   const a2n=ankleVY-nose.y; if(a2n<40) return null;
-  const crownVY=nose.y-a2n*0.08;
-  const crownS=v2s(nose.x,crownVY,cp), ankleS=v2s(nose.x,ankleVY,cp);
-  const heightPx=ankleS.y-crownS.y;
+  // Crown: nose sits at ~91% of body height, ankle joint at ~4%.
+  // crown-to-nose / ankle-to-nose ≈ (100-91)/(91-4) = 9/87 ≈ 0.103
+  const crownVY = nose.y - a2n * 0.103;
+  // Floor: ankle joint is ~4% of body height above the floor.
+  // floor-correction / ankle-to-nose ≈ 4/87 ≈ 0.046
+  const floorVY = ankleVY + a2n * 0.046;
+  const crownS=v2s(nose.x,crownVY,cp), floorS=v2s(nose.x,floorVY,cp);
+  const heightPx=floorS.y-crownS.y;
   const mmPx=PAPER[selectedPaper].h/paperH;
   const heightCm=Math.round(heightPx*mmPx/10);
   if (heightCm < 100 || heightCm > 230) return null; // sanity: reject non-human results
@@ -1084,7 +1089,7 @@ function calcMeas(pose, paperH) {
     const lss=v2s(ls.x,ls.y,cp), rss=v2s(rs.x,rs.y,cp);
     shoulderCm=Math.round(Math.abs(rss.x-lss.x)*mmPx/10);
   }
-  return {heightCm, shoulderCm, crownSY:crownS.y, ankleSY:ankleS.y, noseSX:v2s(nose.x,nose.y,cp).x};
+  return {heightCm, shoulderCm, crownSY:crownS.y, ankleSY:floorS.y, noseSX:v2s(nose.x,nose.y,cp).x};
 }
 
 // ── STABILITY ─────────────────────────────────────────────────────────────────
