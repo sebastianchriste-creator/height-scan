@@ -1335,13 +1335,13 @@ function checkFraming(pose, cp) {
   if (!nose||nose.score<MIN_KP_SCORE) return null;
   const noseS=v2s(nose.x,nose.y,cp);
   // Head too close to top of usable area
-  if (noseS.y < instrCardH()+55) return 'head-cut';
-  // Ankles absent or very close to bottom edge
+  if (noseS.y < instrCardH()+40) return 'head-cut';
+  // Ankles absent or clipped by bottom edge
   const la=kps[KP.L_ANKLE], ra=kps[KP.R_ANKLE];
   const ankleOK=(la?.score>MIN_KP_SCORE)||(ra?.score>MIN_KP_SCORE);
   if (!ankleOK) return 'feet-cut';
   const ankS=la?.score>MIN_KP_SCORE ? v2s(la.x,la.y,cp) : v2s(ra.x,ra.y,cp);
-  if (ankS.y > oc.height-55) return 'feet-cut';
+  if (ankS.y > oc.height-20) return 'feet-cut';
   return null;
 }
 
@@ -1412,27 +1412,73 @@ function startLoop() {
     drawPaperGuide(g, paperOK, cachedPaperH);
     if(latestPose&&cp) drawSkeleton(latestPose,cp);
     if(meas&&paperOK) drawHeightLine(meas);
+    drawDebugOverlay(meas, cp);
     updateInstrCard(paperOK, !!meas, stab);
     if(!hasAutoCaptured&&paperOK&&meas&&!framingIssue&&stab>=1.0){hasAutoCaptured=true;doCapture(meas);}
   }
   loop();
 }
 
+// ── DEBUG OVERLAY ─────────────────────────────────────────────────────────────
+function drawDebugOverlay(meas, cp) {
+  const lines = [`pH:${cachedPaperH.toFixed(0)}px ok:${paperOK?'Y':'N'}`];
+  if (latestPose && cp) {
+    const kps = latestPose.keypoints;
+    const nose = kps[KP.NOSE];
+    const la = kps[KP.L_ANKLE], ra = kps[KP.R_ANKLE];
+    const lk = kps[KP.L_KNEE],  rk = kps[KP.R_KNEE];
+    if (nose && nose.score >= MIN_KP_SCORE) {
+      const ns = v2s(nose.x, nose.y, cp);
+      lines.push(`noseY:${ns.y.toFixed(0)}`);
+    }
+    if (la && la.score >= MIN_KP_SCORE) {
+      const s = v2s(la.x, la.y, cp);
+      lines.push(`L_ank:${s.y.toFixed(0)} (${la.score.toFixed(2)})`);
+    } else { lines.push(`L_ank:-- (${(la?.score||0).toFixed(2)})`); }
+    if (ra && ra.score >= MIN_KP_SCORE) {
+      const s = v2s(ra.x, ra.y, cp);
+      lines.push(`R_ank:${s.y.toFixed(0)} (${ra.score.toFixed(2)})`);
+    } else { lines.push(`R_ank:-- (${(ra?.score||0).toFixed(2)})`); }
+    if (lk && lk.score >= MIN_KP_SCORE) {
+      const s = v2s(lk.x, lk.y, cp);
+      lines.push(`L_kne:${s.y.toFixed(0)} (${lk.score.toFixed(2)})`);
+    }
+  }
+  if (meas) {
+    const hpx = (meas.ankleSY - meas.crownSY).toFixed(0);
+    lines.push(`hPx:${hpx} → ${meas.heightCm}cm`);
+  }
+  const lh=16, pad=6, w=162;
+  const bh = lines.length*lh + pad;
+  const rx = oc.width-w-8, ry = instrCardH()+8;
+  ctx.save();
+  ctx.fillStyle='rgba(0,0,0,0.68)';
+  ctx.beginPath(); ctx.roundRect(rx,ry,w,bh,6); ctx.fill();
+  ctx.fillStyle='#7ec8e3'; ctx.font='11px monospace'; ctx.textAlign='left';
+  lines.forEach((l,i) => ctx.fillText(l, rx+pad, ry+pad+(i+0.8)*lh));
+  ctx.restore();
+}
+
 // ── CAPTURE ───────────────────────────────────────────────────────────────────
-function captureFrame() {
+function captureFrame(meas) {
   const cp = getCrop(); if (!cp) return null;
+  const g = guideRect();
+  // Redraw overlay WITHOUT person guide silhouette (cleaner debug image)
+  ctx.clearRect(0, 0, oc.width, oc.height);
+  drawPaperGuide(g, paperOK, cachedPaperH);
+  if (latestPose && cp) drawSkeleton(latestPose, cp);
+  if (meas && paperOK) drawHeightLine(meas);
+  drawDebugOverlay(meas, cp);   // always include numbers in the debug capture
   const cap = document.createElement('canvas');
   cap.width = oc.width; cap.height = oc.height;
   const c = cap.getContext('2d');
-  // Video with object-fit:cover crop
   c.drawImage(video, cp.sx, cp.sy, cp.sw, cp.sh, 0, 0, cap.width, cap.height);
-  // Overlay (guide, skeleton, height line already drawn on oc)
   c.drawImage(oc, 0, 0);
   return cap.toDataURL('image/jpeg', 0.82);
 }
 
 function doCapture(meas) {
-  capturedFrameUrl = captureFrame();
+  capturedFrameUrl = captureFrame(meas);
   flash.classList.add('on');
   setTimeout(()=>flash.classList.remove('on'),120);
   if('vibrate'in navigator) navigator.vibrate([40,20,80]);
