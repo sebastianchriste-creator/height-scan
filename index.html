@@ -878,6 +878,7 @@ let selectedPaper = 'A4';
 let detector = null, mediaStream = null;
 let latestPose = null, isDetecting = false;
 let frameIdx = 0, paperOK = false, cachedPaperH = 0, paperMissCount = 0;
+let framingIssue = null; // 'head-cut' | 'feet-cut' | null
 let heightHist = [], stableCount = 0;
 let hasAutoCaptured = false, rafId = null;
 let lastMeas = null;
@@ -996,6 +997,15 @@ function detectPaperH(g) {
     rowB[y] = b/xs;
   }
 
+  // ── Contrast stretch (CEO suggestion) ──────────────────────────────────────
+  // Maximises brightness range so even a 10-unit paper/wall difference becomes
+  // a full-range signal, making edge gradients much easier to detect.
+  { let lo=255, hi=0;
+    for(let y=0;y<PH;y++){if(rowB[y]<lo)lo=rowB[y];if(rowB[y]>hi)hi=rowB[y];}
+    const rng=hi-lo;
+    if(rng>3) for(let y=0;y<PH;y++) rowB[y]=(rowB[y]-lo)/rng*255;
+  }
+
   // 3-row smoothing
   const sm = new Float32Array(PH);
   for (let y=0; y<PH; y++)
@@ -1011,18 +1021,18 @@ function detectPaperH(g) {
   const gr = new Float32Array(PH);
   for (let y=1; y<PH-1; y++) gr[y] = sm[y+1] - sm[y-1];
 
-  let topY=-1, topG=1.0; // threshold: gradient must be >1 to qualify
+  // After contrast-stretch the full range is 0-255, so meaningful edges
+  // produce gradients of 10+ units. Require at least 5 to filter noise.
+  let topY=-1, topG=5.0;
   for (let y=1; y<Math.floor(PH*0.8); y++) { if (gr[y]>topG){topG=gr[y];topY=y;} }
-  let botY=-1, botG=-1.0;
+  let botY=-1, botG=-5.0;
   if (topY>=0) {
     for (let y=topY+10; y<PH-1; y++) { if (gr[y]<botG){botG=gr[y];botY=y;} }
   }
   if (topY>=0 && botY>topY) {
     const span=botY-topY;
     const inner=(pfx[botY+1]-pfx[topY])/span;
-    // Accept if: span is paper-sized (12–88% of guide), inner region is bright,
-    // and the edge gradients are meaningful relative to each other.
-    if (span>12 && span<PH*0.88 && inner>155 && topG>1.5 && botG<-1.5)
+    if (span>12 && span<PH*0.88 && inner>60)  // inner>60 on stretched scale ≈ paper-bright
       return span/scale;
   }
 
@@ -1108,11 +1118,12 @@ function drawPersonGuide() {
   const pTop=top+h*0.02, pBot=bot-h*0.01;
   const pH2=pBot-pTop;
 
-  // Fades almost to nothing once pose is live
-  const alpha=latestPose?0.07:0.23;
+  // Coral when framing is bad, white otherwise; fades once pose fills frame
+  const isBad=!!framingIssue;
+  const alpha=isBad?0.55:(latestPose?0.07:0.23);
   ctx.save();
   ctx.globalAlpha=alpha;
-  ctx.fillStyle='#ffffff';
+  ctx.fillStyle=isBad?CORAL:'#ffffff';
 
   // Head
   const hR=pH2*0.085;
@@ -1296,8 +1307,39 @@ function drawHeightLine(meas) {
   ctx.fillText(label, bx+8, by+17);
 }
 
+// ── FRAMING CHECK ─────────────────────────────────────────────────────────────
+function checkFraming(pose, cp) {
+  if (!pose||!cp) return null;
+  const kps=pose.keypoints;
+  const nose=kps[KP.NOSE];
+  if (!nose||nose.score<MIN_KP_SCORE) return null;
+  const noseS=v2s(nose.x,nose.y,cp);
+  // Head too close to top of usable area
+  if (noseS.y < instrCardH()+55) return 'head-cut';
+  // Ankles absent or very close to bottom edge
+  const la=kps[KP.L_ANKLE], ra=kps[KP.R_ANKLE];
+  const ankleOK=(la?.score>MIN_KP_SCORE)||(ra?.score>MIN_KP_SCORE);
+  if (!ankleOK) return 'feet-cut';
+  const ankS=la?.score>MIN_KP_SCORE ? v2s(la.x,la.y,cp) : v2s(ra.x,ra.y,cp);
+  if (ankS.y > oc.height-55) return 'feet-cut';
+  return null;
+}
+
 // ── STATUS (instruction card) ─────────────────────────────────────────────────
 function updateInstrCard(ok, hasPose, stability) {
+  // Framing issues override everything else
+  if (framingIssue==='head-cut') {
+    instrDot.className='warn';
+    instrText.textContent='Step back — head is cut off';
+    instrSub.textContent='Move further from the camera';
+    stabFill.style.width='0%'; stabFill.style.background=CORAL; return;
+  }
+  if (framingIssue==='feet-cut') {
+    instrDot.className='warn';
+    instrText.textContent='Step back — feet are cut off';
+    instrSub.textContent='Full body must fit in frame';
+    stabFill.style.width='0%'; stabFill.style.background=CORAL; return;
+  }
   if(!ok) {
     instrDot.className='';
     instrText.textContent='Align paper with guide';
@@ -1342,7 +1384,8 @@ function startLoop() {
     const g=guideRect();
     if(frameIdx%5===0){const ph=detectPaperH(g);paperOK=ph>0;if(ph>0){cachedPaperH=ph;paperMissCount=0;}else if(++paperMissCount>8)cachedPaperH=0;}
     if(frameIdx%2===0) runPose();
-    const meas=calcMeas(latestPose,cachedPaperH);
+    framingIssue=checkFraming(latestPose,cp);
+    const meas=(!framingIssue)?calcMeas(latestPose,cachedPaperH):null;
     const stab=trackStability(meas?.heightCm||null);
     // Draw
     drawPersonGuide();
@@ -1350,7 +1393,7 @@ function startLoop() {
     if(latestPose&&cp) drawSkeleton(latestPose,cp);
     if(meas&&paperOK) drawHeightLine(meas);
     updateInstrCard(paperOK, !!meas, stab);
-    if(!hasAutoCaptured&&paperOK&&meas&&stab>=1.0){hasAutoCaptured=true;doCapture(meas);}
+    if(!hasAutoCaptured&&paperOK&&meas&&!framingIssue&&stab>=1.0){hasAutoCaptured=true;doCapture(meas);}
   }
   loop();
 }
