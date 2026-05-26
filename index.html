@@ -1001,99 +1001,121 @@ function detectPaperH(g) {
   const cp = getCrop();
   if (!cp||!video.videoWidth) return 0;
 
-  // Sample guide rect from video into a normalised canvas
+  // Sample guide-rect from video into a normalised 220-tall canvas
   const PH=220, scale=PH/g.h, pw=Math.round(g.w*scale);
   pc.width=pw; pc.height=PH;
   pctx.drawImage(video, g.x/cp.scale+cp.sx, g.y/cp.scale+cp.sy,
                         g.w/cp.scale, g.h/cp.scale, 0,0,pw,PH);
   const d = pctx.getImageData(0,0,pw,PH).data;
 
-  // Luma image
+  // Luma
   const L = new Float32Array(pw*PH);
   for (let i=0; i<pw*PH; i++)
     L[i] = 0.299*d[i*4] + 0.587*d[i*4+1] + 0.114*d[i*4+2];
 
-  // Row edge energy: avg |Gy| across central 70% of width (avoids guide-border artifacts)
-  const cx0=Math.round(pw*0.15), cx1=Math.round(pw*0.85), cxw=cx1-cx0;
+  const cx0=Math.round(pw*0.10), cx1=Math.round(pw*0.90), cxw=cx1-cx0;
+  const margin=Math.round(PH*0.04);
+
+  // ── Step 1: Brightness profile ────────────────────────────────────────────
+  // Paper is the BRIGHTEST object in the guide rect. Row-average brightness
+  // lets us find it even when wall and paper are both white (very faint edges).
+  const rowB = new Float32Array(PH);
+  for (let y=0; y<PH; y++) {
+    let s=0;
+    for (let x=cx0; x<cx1; x++) s+=L[y*pw+x];
+    rowB[y]=s/cxw;
+  }
+  const rowBs = new Float32Array(PH);
+  rowBs[0]=rowB[0]; rowBs[PH-1]=rowB[PH-1];
+  for (let y=1; y<PH-1; y++) rowBs[y]=(rowB[y-1]+rowB[y]+rowB[y+1])/3;
+
+  // Max brightness in the usable zone
+  let maxB=0;
+  for (let y=margin; y<PH-margin; y++) maxB=Math.max(maxB,rowBs[y]);
+  if (maxB<100) return 0;  // guide rect completely dark → no paper
+
+  // Adaptive threshold: paper rows must be within 30 pts of the brightest row
+  const bThresh = Math.max(maxB-30, 100);
+
+  let approxTop=-1, approxBot=-1;
+  for (let y=margin; y<PH-margin; y++)
+    if (rowBs[y]>=bThresh){approxTop=y; break;}
+  for (let y=PH-margin-1; y>=margin; y--)
+    if (rowBs[y]>=bThresh){approxBot=y; break;}
+
+  if (approxTop<0||approxBot<=approxTop+8) return 0;
+
+  // ── Step 2: Sobel refinement within ±10% of PH around the bright bounds ──
+  // Sharpens the edge position; falls back to brightness bounds if edges are weak.
   const rowE = new Float32Array(PH);
   for (let y=1; y<PH-1; y++) {
     let s=0;
     for (let x=cx0; x<cx1; x++) {
-      const gy = (L[(y+1)*pw+x-1]+2*L[(y+1)*pw+x]+L[(y+1)*pw+x+1]
-                 -L[(y-1)*pw+x-1]-2*L[(y-1)*pw+x]-L[(y-1)*pw+x+1])/4;
-      s += Math.abs(gy);
+      const gy=(L[(y+1)*pw+x-1]+2*L[(y+1)*pw+x]+L[(y+1)*pw+x+1]
+               -L[(y-1)*pw+x-1]-2*L[(y-1)*pw+x]-L[(y-1)*pw+x+1])/4;
+      s+=Math.abs(gy);
     }
-    rowE[y] = s/cxw;
+    rowE[y]=s/cxw;
   }
-  // 3-tap smooth to reduce single-pixel noise
   const rowEs = new Float32Array(PH);
   for (let y=1; y<PH-1; y++) rowEs[y]=(rowE[y-1]+rowE[y]+rowE[y+1])/3;
 
-  // ── KEY FIX: find OUTERMOST strong edges, not the "strongest" edge.
-  // Old approach (strongest-in-each-half) would pick floor/wall junctions or shadows
-  // that are stronger than the paper boundary, inflating spanH and shrinking mm/px.
-  // New approach: first edge from top = paper top; first edge from bottom = paper bottom.
-  const THRESH = 3.0;  // avg |Gy|; white-on-light-wall edges can be subtle (~3-10)
-  const margin  = Math.round(PH * 0.04);
-  let topY = -1, botY = -1;
+  const WIN=Math.round(PH*0.10);
+  let topY=approxTop, botY=approxBot, topE=0, botE=0;
+  for (let y=Math.max(1,approxTop-WIN); y<=Math.min(PH-2,approxTop+WIN); y++)
+    if (rowEs[y]>topE){topE=rowEs[y];topY=y;}
+  for (let y=Math.max(1,approxBot-WIN); y<=Math.min(PH-2,approxBot+WIN); y++)
+    if (rowEs[y]>botE){botE=rowEs[y];botY=y;}
+  // If edge refinement found nothing credible, stick with brightness bounds
+  if (topE<1.2) topY=approxTop;
+  if (botE<1.2) botY=approxBot;
 
-  for (let y = margin; y < Math.round(PH * 0.85); y++) {
-    if (rowEs[y] > THRESH) { topY = y; break; }
-  }
-  for (let y = PH - margin - 1; y >= Math.round(PH * 0.15); y--) {
-    if (rowEs[y] > THRESH) { botY = y; break; }
-  }
+  if (botY<=topY+8) return 0;
+  const spanH=botY-topY;
+  if (spanH>PH*0.96) return 0;
 
-  if (topY < 0 || botY <= topY + 8) return 0;
-  const spanH = botY - topY;
-  if (spanH > PH * 0.95) return 0;
+  // ── Step 3: Inner brightness validation ───────────────────────────────────
+  const inner=_innerBrightness(L,pw,topY,botY,cx0,cx1);
+  _dbgPaperInner=Math.round(inner);
+  if (inner<100) return 0;  // detected span is too dark to be paper
 
-  // Inner brightness: paper is white — must be significantly brighter than surroundings
-  const inner = _innerBrightness(L, pw, topY, botY, cx0, cx1);
-  _dbgPaperInner = Math.round(inner);
-  if (inner < 130) return 0;  // raised from 80; non-paper regions fail this
-
-  // Vertical edges (left/right) searched only within the detected H span
-  const colE = new Float32Array(pw);
+  // ── Step 4: Vertical edges within H span — aspect-ratio cross-check ───────
+  const colE=new Float32Array(pw);
   for (let x=1; x<pw-1; x++) {
     let s=0, n=0;
     for (let y=topY; y<=botY; y++) {
-      const gx = (L[(y-1)*pw+x+1]+2*L[y*pw+x+1]+L[(y+1)*pw+x+1]
-                 -L[(y-1)*pw+x-1]-2*L[y*pw+x-1]-L[(y+1)*pw+x-1])/4;
-      s += Math.abs(gx); n++;
+      const gx=(L[(y-1)*pw+x+1]+2*L[y*pw+x+1]+L[(y+1)*pw+x+1]
+               -L[(y-1)*pw+x-1]-2*L[y*pw+x-1]-L[(y+1)*pw+x-1])/4;
+      s+=Math.abs(gx); n++;
     }
-    colE[x] = n > 0 ? s/n : 0;
+    colE[x]=n>0?s/n:0;
   }
-  // First left/right edges (outermost, same logic as H)
-  let lftX = -1, rgtX = -1;
-  for (let x = 1; x < Math.round(pw*0.65); x++)
-    if (colE[x] > THRESH*0.8) { lftX = x; break; }
-  for (let x = pw-2; x >= Math.round(pw*0.35); x--)
-    if (colE[x] > THRESH*0.8) { rgtX = x; break; }
+  let lftX=-1, rgtX=-1;
+  for (let x=1; x<Math.round(pw*0.65); x++)
+    if (colE[x]>2.0){lftX=x;break;}
+  for (let x=pw-2; x>=Math.round(pw*0.35); x--)
+    if (colE[x]>2.0){rgtX=x;break;}
 
-  // Store detected bounds in screen-pixel coords for debug overlay
-  _dbgPaperTopY = g.y + topY / scale;
-  _dbgPaperBotY = g.y + botY / scale;
+  _dbgPaperTopY=g.y+topY/scale;
+  _dbgPaperBotY=g.y+botY/scale;
 
-  // Aspect-ratio cross-validation: A4=0.707, Letter=0.773
-  const expRatio = PAPER[selectedPaper].w / PAPER[selectedPaper].h;
-  if (lftX >= 0 && rgtX > lftX) {
-    const spanW  = rgtX - lftX;
-    const detRatio = spanW / spanH;
-    if (Math.abs(detRatio - expRatio) / expRatio < 0.25) {
-      // Both H and V edges agree with expected paper shape ✓
-      return spanH / scale;
-    }
-    // Mismatch — cross-check: does W-derived H agree within 30%?
-    const spanH_fromW = spanW / expRatio;
-    if (Math.abs(spanH_fromW - spanH) / spanH < 0.30) return spanH / scale;
-    return 0;  // major inconsistency — spurious edges
+  const expRatio=PAPER[selectedPaper].w/PAPER[selectedPaper].h;
+  if (lftX>=0&&rgtX>lftX) {
+    const spanW=rgtX-lftX;
+    const detRatio=spanW/spanH;
+    if (Math.abs(detRatio-expRatio)/expRatio<0.30) return spanH/scale;
+    // Aspect mismatch — try W-derived height
+    const spanH_fromW=spanW/expRatio;
+    if (Math.abs(spanH_fromW-spanH)/spanH<0.35) return spanH/scale;
+    // Major inconsistency — accept only if very bright (strong paper signal)
+    if (inner>=150) return spanH/scale;
+    return 0;
   }
 
-  // No clear vertical edges (paper sides blend into wall) — trust H edges alone
-  // but require very bright interior to avoid false positives
-  if (inner < 140) return 0;
-  return spanH / scale;
+  // No clear vertical edges (paper blends with wall on the sides)
+  // Accept H-only measurement if interior is clearly bright paper
+  if (inner>=130) return spanH/scale;
+  return 0;
 }
 
 function _innerBrightness(L, pw, topY, botY, x0, x1) {
