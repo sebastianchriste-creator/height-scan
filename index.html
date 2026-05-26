@@ -774,6 +774,10 @@
            style="width:100%;border-radius:12px;cursor:pointer;display:block;"
            onclick="document.getElementById('capture-modal').style.display='flex'">
       <div style="font-size:11px;color:var(--gray-text);margin-top:6px;text-align:center;">Tap to enlarge · check if paper + full body were visible</div>
+      <button id="debug-btn" onclick="debugSendCapture()"
+              style="margin-top:10px;width:100%;padding:10px;border-radius:10px;border:1.5px dashed var(--gray-text);background:transparent;color:var(--gray-text);font-size:13px;font-weight:600;cursor:pointer;">
+        🐛 Debug — download &amp; copy to clipboard
+      </button>
     </div>
 
     <div class="result-actions">
@@ -1853,6 +1857,36 @@ document.getElementById('btn-rescan').addEventListener('click', () => {
   document.getElementById('btn-start').click();
 });
 refreshProfileChip();
+
+// ── DEBUG: SEND CAPTURE TO CHAT ───────────────────────────────────────────────
+async function debugSendCapture() {
+  if (!capturedFrameUrl) return;
+  const btn = document.getElementById('debug-btn');
+
+  // 1. Always trigger a download with a fixed name so you can drag it straight into the chat.
+  const a = document.createElement('a');
+  a.href = capturedFrameUrl;
+  a.download = 'height-scan-debug.jpg';
+  a.click();
+
+  // 2. On desktop Chrome also try to copy the image to clipboard (paste directly into chat).
+  let clipped = false;
+  try {
+    const blob = await (await fetch(capturedFrameUrl)).blob();
+    await navigator.clipboard.write([new ClipboardItem({'image/jpeg': blob})]);
+    clipped = true;
+  } catch(_) {}
+
+  btn.textContent = clipped
+    ? '✓ Downloaded + copied — paste in chat'
+    : '✓ Downloaded — drag height-scan-debug.jpg into chat';
+  btn.style.borderColor = '#4CAF50';
+  btn.style.color = '#4CAF50';
+  setTimeout(() => {
+    btn.textContent = '🐛 Debug — download & copy to clipboard';
+    btn.style.borderColor = ''; btn.style.color = '';
+  }, 5000);
+}
 
 // ── COPY EMBED CODE ───────────────────────────────────────────────────────────
 function copyEmbedCode(el) {
