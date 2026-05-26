@@ -985,82 +985,114 @@ function instrCardH() {
 function guideRect() {
   const W=oc.width, H=oc.height, top=instrCardH();
   const availH = H - top - 90;
-  const gH = availH * 0.24;
+  const gH = availH * 0.18;  // smaller guide → paper fills it from further away → person fits in frame
   const gW = gH * (PAPER[selectedPaper].w / PAPER[selectedPaper].h);
   return { x: W*0.04, y: top + availH*0.08, w: gW, h: gH };
 }
 
 // ── PAPER DETECTION ───────────────────────────────────────────────────────────
+// Uses Sobel edge detection on all 4 sides + aspect-ratio cross-validation.
+// This is more precise than row-average brightness gradients, which over-shoot
+// paper boundaries and inflate paperH.
 function detectPaperH(g) {
   const cp = getCrop();
   if (!cp||!video.videoWidth) return 0;
-  const PH=180, scale=PH/g.h, pw=Math.round(g.w*scale);
+
+  // Sample guide rect from video into a normalised canvas
+  const PH=220, scale=PH/g.h, pw=Math.round(g.w*scale);
   pc.width=pw; pc.height=PH;
   pctx.drawImage(video, g.x/cp.scale+cp.sx, g.y/cp.scale+cp.sy,
                         g.w/cp.scale, g.h/cp.scale, 0,0,pw,PH);
   const d = pctx.getImageData(0,0,pw,PH).data;
 
-  // Use centre 60% of width to avoid guide-border draw artifacts.
-  const x0=Math.round(pw*0.2), x1=Math.round(pw*0.8), xs=x1-x0;
-  const rowB = new Float32Array(PH);
-  for (let y=0; y<PH; y++) {
-    let b=0;
-    for (let x=x0; x<x1; x++) {
-      const i=(y*pw+x)*4;
-      b += 0.299*d[i]+0.587*d[i+1]+0.114*d[i+2];
+  // Luma image
+  const L = new Float32Array(pw*PH);
+  for (let i=0; i<pw*PH; i++)
+    L[i] = 0.299*d[i*4] + 0.587*d[i*4+1] + 0.114*d[i*4+2];
+
+  // Sobel Gy (detects horizontal edges: paper top/bottom)
+  // Sobel Gx (detects vertical edges: paper left/right)
+  const Gy = new Float32Array(pw*PH);
+  const Gx = new Float32Array(pw*PH);
+  for (let y=1; y<PH-1; y++) {
+    for (let x=1; x<pw-1; x++) {
+      const i=y*pw+x;
+      Gy[i]=( L[(y+1)*pw+x-1]+2*L[(y+1)*pw+x]+L[(y+1)*pw+x+1]
+             -L[(y-1)*pw+x-1]-2*L[(y-1)*pw+x]-L[(y-1)*pw+x+1])/4;
+      Gx[i]=( L[(y-1)*pw+x+1]+2*L[y*pw+x+1]+L[(y+1)*pw+x+1]
+             -L[(y-1)*pw+x-1]-2*L[y*pw+x-1]-L[(y+1)*pw+x-1])/4;
     }
-    rowB[y] = b/xs;
   }
 
-  // ── Contrast stretch (CEO suggestion) ──────────────────────────────────────
-  // Maximises brightness range so even a 10-unit paper/wall difference becomes
-  // a full-range signal, making edge gradients much easier to detect.
-  { let lo=255, hi=0;
-    for(let y=0;y<PH;y++){if(rowB[y]<lo)lo=rowB[y];if(rowB[y]>hi)hi=rowB[y];}
-    const rng=hi-lo;
-    if(rng>3) for(let y=0;y<PH;y++) rowB[y]=(rowB[y]-lo)/rng*255;
+  // Row edge energy: sum |Gy| across central 70% of width (avoids guide-border artifacts)
+  const cx0=Math.round(pw*0.15), cx1=Math.round(pw*0.85), cxw=cx1-cx0;
+  const rowE = new Float32Array(PH);
+  for (let y=1; y<PH-1; y++) {
+    let s=0;
+    for (let x=cx0; x<cx1; x++) s+=Math.abs(Gy[y*pw+x]);
+    rowE[y]=s/cxw;
   }
 
-  // 3-row smoothing
-  const sm = new Float32Array(PH);
-  for (let y=0; y<PH; y++)
-    sm[y] = (rowB[Math.max(0,y-1)] + rowB[y] + rowB[Math.min(PH-1,y+1)]) / 3;
-
-  // Prefix sum for O(1) range brightness queries
-  const pfx = new Float32Array(PH+1);
-  for (let y=0; y<PH; y++) pfx[y+1] = pfx[y] + sm[y];
-
-  // ── Strategy 1: edge-gradient detection ────────────────────────────────────
-  // Paper boundary creates a brightness gradient even on a white wall.
-  // Find the row of max positive gradient (paper top) then max negative after it (paper bottom).
-  const gr = new Float32Array(PH);
-  for (let y=1; y<PH-1; y++) gr[y] = sm[y+1] - sm[y-1];
-
-  // After contrast-stretch the full range is 0-255, so meaningful edges
-  // produce gradients of 10+ units. Require at least 5 to filter noise.
-  let topY=-1, topG=5.0;
-  for (let y=1; y<Math.floor(PH*0.8); y++) { if (gr[y]>topG){topG=gr[y];topY=y;} }
-  let botY=-1, botG=-5.0;
-  if (topY>=0) {
-    for (let y=topY+10; y<PH-1; y++) { if (gr[y]<botG){botG=gr[y];botY=y;} }
-  }
-  if (topY>=0 && botY>topY) {
-    const span=botY-topY;
-    const inner=(pfx[botY+1]-pfx[topY])/span;
-    if (span>12 && span<PH*0.88 && inner>60)  // inner>60 on stretched scale ≈ paper-bright
-      return span/scale;
+  // Col edge energy: sum |Gx| across central 80% of height
+  const cy0=Math.round(PH*0.1), cy1=Math.round(PH*0.9), cyw=cy1-cy0;
+  const colE = new Float32Array(pw);
+  for (let x=1; x<pw-1; x++) {
+    let s=0;
+    for (let y=cy0; y<cy1; y++) s+=Math.abs(Gx[y*pw+x]);
+    colE[x]=s/cyw;
   }
 
-  // ── Strategy 2: brightness-band scan (coloured / beige walls) ──────────────
-  // Only runs when edge detection found no valid pair (e.g. paper on dark wall).
-  const sceneAvg = pfx[PH]/PH;
-  const thresh = Math.max(200, sceneAvg+20);
-  let f=-1, l=-1;
-  for (let y=0; y<PH; y++) {
-    if (sm[y] >= thresh) { if(f<0)f=y; l=y; }
+  // Find strongest horizontal edge in each half → paper top and bottom
+  let topY=-1, topStr=0;
+  for (let y=2; y<Math.round(PH*0.75); y++)
+    if (rowE[y]>topStr){topStr=rowE[y];topY=y;}
+  let botY=-1, botStr=0;
+  for (let y=Math.round(PH*0.25); y<PH-2; y++)
+    if (rowE[y]>botStr){botStr=rowE[y];botY=y;}
+
+  if (topY<0||botY<=topY+8||topStr<1.0||botStr<1.0) return 0;
+  const spanH=botY-topY;
+  if (spanH<10||spanH>PH*0.92) return 0;
+
+  // Find strongest vertical edge in each half → paper left and right
+  let lftX=-1, lftStr=0;
+  for (let x=1; x<Math.round(pw*0.6); x++)
+    if (colE[x]>lftStr){lftStr=colE[x];lftX=x;}
+  let rgtX=-1, rgtStr=0;
+  for (let x=Math.round(pw*0.4); x<pw-1; x++)
+    if (colE[x]>rgtStr){rgtStr=colE[x];rgtX=x;}
+
+  // Aspect-ratio cross-validation: A4=0.707, Letter=0.773
+  const expRatio = PAPER[selectedPaper].w / PAPER[selectedPaper].h;
+  if (lftX>=0 && rgtX>lftX && lftStr>1.0 && rgtStr>1.0) {
+    const spanW = rgtX-lftX;
+    const detRatio = spanW/spanH;
+    if (Math.abs(detRatio-expRatio)/expRatio < 0.22) {
+      // Both H and V edges agree with expected paper shape ✓
+      // Use H-derived height (more pixels = more accurate for portrait paper)
+      const inner = _innerBrightness(L, pw, topY, botY, cx0, cx1);
+      if (inner<80) return 0;
+      return spanH/scale;
+    }
+    // H/V don't agree — derive height from the more-reliable width measurement
+    const spanH_fromW = spanW/expRatio;
+    if (spanH_fromW>10 && spanH_fromW<PH*0.92) return spanH_fromW/scale;
+    return 0;
   }
-  if (f<0 || l-f<12 || l-f>PH*0.85) return 0;
-  return (l-f)/scale;
+
+  // No reliable vertical edges (paper on wall with no side contrast) — use H edges only
+  const inner = _innerBrightness(L, pw, topY, botY, cx0, cx1);
+  if (inner<80) return 0;
+  return spanH/scale;
+}
+
+function _innerBrightness(L, pw, topY, botY, x0, x1) {
+  const spanH=botY-topY;
+  const iy0=topY+Math.round(spanH*0.15), iy1=botY-Math.round(spanH*0.15);
+  let s=0, n=0;
+  for (let y=iy0; y<iy1; y++)
+    for (let x=x0; x<x1; x++){s+=L[y*pw+x];n++;}
+  return n>0 ? s/n : 0;
 }
 
 // ── POSE DETECTION ────────────────────────────────────────────────────────────
