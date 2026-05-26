@@ -774,10 +774,21 @@
            style="width:100%;border-radius:12px;cursor:pointer;display:block;"
            onclick="document.getElementById('capture-modal').style.display='flex'">
       <div style="font-size:11px;color:var(--gray-text);margin-top:6px;text-align:center;">Tap to enlarge · check if paper + full body were visible</div>
-      <button id="debug-btn" onclick="debugSendCapture()"
-              style="margin-top:10px;width:100%;padding:10px;border-radius:10px;border:1.5px dashed var(--gray-text);background:transparent;color:var(--gray-text);font-size:13px;font-weight:600;cursor:pointer;">
-        🐛 Debug — download &amp; copy to clipboard
-      </button>
+      <div style="margin-top:10px;display:flex;gap:8px;">
+        <button onclick="debugShare()"
+                style="flex:1;padding:10px 6px;border-radius:10px;border:1.5px dashed var(--gray-text);background:transparent;color:var(--gray-text);font-size:12px;font-weight:600;cursor:pointer;">
+          📤 Share image
+        </button>
+        <button id="debug-link-btn" onclick="debugGetLink()"
+                style="flex:1;padding:10px 6px;border-radius:10px;border:1.5px dashed var(--gray-text);background:transparent;color:var(--gray-text);font-size:12px;font-weight:600;cursor:pointer;">
+          🔗 Get chat link
+        </button>
+      </div>
+      <div id="debug-link-box" style="display:none;margin-top:8px;background:#1a1a2e;border-radius:8px;padding:10px 12px;">
+        <div style="font-size:10px;color:rgba(255,255,255,0.45);margin-bottom:4px;">Paste this URL into the chat (expires in 1 h):</div>
+        <div id="debug-link-url" style="font-size:12px;color:#7ec8e3;word-break:break-all;font-family:monospace;cursor:pointer;" onclick="navigator.clipboard?.writeText(this.textContent)"></div>
+        <div style="font-size:10px;color:rgba(255,255,255,0.3);margin-top:4px;">Tap URL to copy</div>
+      </div>
     </div>
 
     <div class="result-actions">
@@ -1858,34 +1869,59 @@ document.getElementById('btn-rescan').addEventListener('click', () => {
 });
 refreshProfileChip();
 
-// ── DEBUG: SEND CAPTURE TO CHAT ───────────────────────────────────────────────
-async function debugSendCapture() {
+// ── DEBUG: SHARE CAPTURE (phone-friendly) ────────────────────────────────────
+async function debugShare() {
   if (!capturedFrameUrl) return;
-  const btn = document.getElementById('debug-btn');
-
-  // 1. Always trigger a download with a fixed name so you can drag it straight into the chat.
+  const blob = await (await fetch(capturedFrameUrl)).blob();
+  const file = new File([blob], 'height-scan-debug.jpg', {type: 'image/jpeg'});
+  if (navigator.canShare && navigator.canShare({files: [file]})) {
+    try {
+      await navigator.share({files: [file], title: 'BodyScan Debug'});
+      return;
+    } catch(e) { /* user cancelled or not supported */ }
+  }
+  // Fallback: trigger download
   const a = document.createElement('a');
   a.href = capturedFrameUrl;
   a.download = 'height-scan-debug.jpg';
   a.click();
+}
 
-  // 2. On desktop Chrome also try to copy the image to clipboard (paste directly into chat).
-  let clipped = false;
+async function debugGetLink() {
+  if (!capturedFrameUrl) return;
+  const btn = document.getElementById('debug-link-btn');
+  const box = document.getElementById('debug-link-box');
+  const urlEl = document.getElementById('debug-link-url');
+
+  btn.textContent = '⏳ Uploading…';
+  btn.disabled = true;
+
   try {
     const blob = await (await fetch(capturedFrameUrl)).blob();
-    await navigator.clipboard.write([new ClipboardItem({'image/jpeg': blob})]);
-    clipped = true;
-  } catch(_) {}
+    const fd = new FormData();
+    fd.append('file', blob, 'height-scan-debug.jpg');
+    const res = await fetch('https://file.io/?expires=1h', {method: 'POST', body: fd});
+    const json = await res.json();
+    if (!json.success || !json.link) throw new Error('upload failed');
 
-  btn.textContent = clipped
-    ? '✓ Downloaded + copied — paste in chat'
-    : '✓ Downloaded — drag height-scan-debug.jpg into chat';
-  btn.style.borderColor = '#4CAF50';
-  btn.style.color = '#4CAF50';
-  setTimeout(() => {
-    btn.textContent = '🐛 Debug — download & copy to clipboard';
-    btn.style.borderColor = ''; btn.style.color = '';
-  }, 5000);
+    urlEl.textContent = json.link;
+    box.style.display = 'block';
+
+    // Try to copy to clipboard automatically
+    try { await navigator.clipboard.writeText(json.link); } catch(_) {}
+
+    btn.textContent = '✓ Link ready';
+    btn.style.color = '#4CAF50';
+    btn.style.borderColor = '#4CAF50';
+  } catch(e) {
+    btn.textContent = '✗ Upload failed';
+    btn.style.color = '#ff6b6b';
+    setTimeout(() => {
+      btn.textContent = '🔗 Get chat link';
+      btn.style.color = ''; btn.style.borderColor = '';
+      btn.disabled = false;
+    }, 3000);
+  }
 }
 
 // ── COPY EMBED CODE ───────────────────────────────────────────────────────────
