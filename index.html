@@ -894,6 +894,8 @@ let detector = null, mediaStream = null;
 let latestPose = null, isDetecting = false;
 let frameIdx = 0, paperOK = false, cachedPaperH = 0, paperMissCount = 0;
 let framingIssue = null; // 'head-cut' | 'feet-cut' | null
+// Paper detection debug state (updated each detectPaperH call)
+let _dbgPaperTopY = -1, _dbgPaperBotY = -1, _dbgPaperInner = 0;
 let heightHist = [], stableCount = 0;
 let hasAutoCaptured = false, rafId = null;
 let lastMeas = null;
@@ -995,6 +997,7 @@ function guideRect() {
 // This is more precise than row-average brightness gradients, which over-shoot
 // paper boundaries and inflate paperH.
 function detectPaperH(g) {
+  _dbgPaperTopY = -1; _dbgPaperBotY = -1; _dbgPaperInner = 0;
   const cp = getCrop();
   if (!cp||!video.videoWidth) return 0;
 
@@ -1010,80 +1013,87 @@ function detectPaperH(g) {
   for (let i=0; i<pw*PH; i++)
     L[i] = 0.299*d[i*4] + 0.587*d[i*4+1] + 0.114*d[i*4+2];
 
-  // Sobel Gy (detects horizontal edges: paper top/bottom)
-  // Sobel Gx (detects vertical edges: paper left/right)
-  const Gy = new Float32Array(pw*PH);
-  const Gx = new Float32Array(pw*PH);
-  for (let y=1; y<PH-1; y++) {
-    for (let x=1; x<pw-1; x++) {
-      const i=y*pw+x;
-      Gy[i]=( L[(y+1)*pw+x-1]+2*L[(y+1)*pw+x]+L[(y+1)*pw+x+1]
-             -L[(y-1)*pw+x-1]-2*L[(y-1)*pw+x]-L[(y-1)*pw+x+1])/4;
-      Gx[i]=( L[(y-1)*pw+x+1]+2*L[y*pw+x+1]+L[(y+1)*pw+x+1]
-             -L[(y-1)*pw+x-1]-2*L[y*pw+x-1]-L[(y+1)*pw+x-1])/4;
-    }
-  }
-
-  // Row edge energy: sum |Gy| across central 70% of width (avoids guide-border artifacts)
+  // Row edge energy: avg |Gy| across central 70% of width (avoids guide-border artifacts)
   const cx0=Math.round(pw*0.15), cx1=Math.round(pw*0.85), cxw=cx1-cx0;
   const rowE = new Float32Array(PH);
   for (let y=1; y<PH-1; y++) {
     let s=0;
-    for (let x=cx0; x<cx1; x++) s+=Math.abs(Gy[y*pw+x]);
-    rowE[y]=s/cxw;
+    for (let x=cx0; x<cx1; x++) {
+      const gy = (L[(y+1)*pw+x-1]+2*L[(y+1)*pw+x]+L[(y+1)*pw+x+1]
+                 -L[(y-1)*pw+x-1]-2*L[(y-1)*pw+x]-L[(y-1)*pw+x+1])/4;
+      s += Math.abs(gy);
+    }
+    rowE[y] = s/cxw;
+  }
+  // 3-tap smooth to reduce single-pixel noise
+  const rowEs = new Float32Array(PH);
+  for (let y=1; y<PH-1; y++) rowEs[y]=(rowE[y-1]+rowE[y]+rowE[y+1])/3;
+
+  // ── KEY FIX: find OUTERMOST strong edges, not the "strongest" edge.
+  // Old approach (strongest-in-each-half) would pick floor/wall junctions or shadows
+  // that are stronger than the paper boundary, inflating spanH and shrinking mm/px.
+  // New approach: first edge from top = paper top; first edge from bottom = paper bottom.
+  const THRESH = 6.0;  // avg |Gy|; a paper-on-wall edge is typically 15-50
+  const margin  = Math.round(PH * 0.04);
+  let topY = -1, botY = -1;
+
+  for (let y = margin; y < Math.round(PH * 0.85); y++) {
+    if (rowEs[y] > THRESH) { topY = y; break; }
+  }
+  for (let y = PH - margin - 1; y >= Math.round(PH * 0.15); y--) {
+    if (rowEs[y] > THRESH) { botY = y; break; }
   }
 
-  // Col edge energy: sum |Gx| across central 80% of height
-  const cy0=Math.round(PH*0.1), cy1=Math.round(PH*0.9), cyw=cy1-cy0;
+  if (topY < 0 || botY <= topY + 8) return 0;
+  const spanH = botY - topY;
+  if (spanH > PH * 0.95) return 0;
+
+  // Inner brightness: paper is white — must be significantly brighter than surroundings
+  const inner = _innerBrightness(L, pw, topY, botY, cx0, cx1);
+  _dbgPaperInner = Math.round(inner);
+  if (inner < 130) return 0;  // raised from 80; non-paper regions fail this
+
+  // Vertical edges (left/right) searched only within the detected H span
   const colE = new Float32Array(pw);
   for (let x=1; x<pw-1; x++) {
-    let s=0;
-    for (let y=cy0; y<cy1; y++) s+=Math.abs(Gx[y*pw+x]);
-    colE[x]=s/cyw;
+    let s=0, n=0;
+    for (let y=topY; y<=botY; y++) {
+      const gx = (L[(y-1)*pw+x+1]+2*L[y*pw+x+1]+L[(y+1)*pw+x+1]
+                 -L[(y-1)*pw+x-1]-2*L[y*pw+x-1]-L[(y+1)*pw+x-1])/4;
+      s += Math.abs(gx); n++;
+    }
+    colE[x] = n > 0 ? s/n : 0;
   }
+  // First left/right edges (outermost, same logic as H)
+  let lftX = -1, rgtX = -1;
+  for (let x = 1; x < Math.round(pw*0.65); x++)
+    if (colE[x] > THRESH) { lftX = x; break; }
+  for (let x = pw-2; x >= Math.round(pw*0.35); x--)
+    if (colE[x] > THRESH) { rgtX = x; break; }
 
-  // Find strongest horizontal edge in each half → paper top and bottom
-  let topY=-1, topStr=0;
-  for (let y=2; y<Math.round(PH*0.75); y++)
-    if (rowE[y]>topStr){topStr=rowE[y];topY=y;}
-  let botY=-1, botStr=0;
-  for (let y=Math.round(PH*0.25); y<PH-2; y++)
-    if (rowE[y]>botStr){botStr=rowE[y];botY=y;}
-
-  if (topY<0||botY<=topY+8||topStr<1.0||botStr<1.0) return 0;
-  const spanH=botY-topY;
-  if (spanH<10||spanH>PH*0.92) return 0;
-
-  // Find strongest vertical edge in each half → paper left and right
-  let lftX=-1, lftStr=0;
-  for (let x=1; x<Math.round(pw*0.6); x++)
-    if (colE[x]>lftStr){lftStr=colE[x];lftX=x;}
-  let rgtX=-1, rgtStr=0;
-  for (let x=Math.round(pw*0.4); x<pw-1; x++)
-    if (colE[x]>rgtStr){rgtStr=colE[x];rgtX=x;}
+  // Store detected bounds in screen-pixel coords for debug overlay
+  _dbgPaperTopY = g.y + topY / scale;
+  _dbgPaperBotY = g.y + botY / scale;
 
   // Aspect-ratio cross-validation: A4=0.707, Letter=0.773
   const expRatio = PAPER[selectedPaper].w / PAPER[selectedPaper].h;
-  if (lftX>=0 && rgtX>lftX && lftStr>1.0 && rgtStr>1.0) {
-    const spanW = rgtX-lftX;
-    const detRatio = spanW/spanH;
-    if (Math.abs(detRatio-expRatio)/expRatio < 0.22) {
+  if (lftX >= 0 && rgtX > lftX) {
+    const spanW  = rgtX - lftX;
+    const detRatio = spanW / spanH;
+    if (Math.abs(detRatio - expRatio) / expRatio < 0.25) {
       // Both H and V edges agree with expected paper shape ✓
-      // Use H-derived height (more pixels = more accurate for portrait paper)
-      const inner = _innerBrightness(L, pw, topY, botY, cx0, cx1);
-      if (inner<80) return 0;
-      return spanH/scale;
+      return spanH / scale;
     }
-    // H/V don't agree — derive height from the more-reliable width measurement
-    const spanH_fromW = spanW/expRatio;
-    if (spanH_fromW>10 && spanH_fromW<PH*0.92) return spanH_fromW/scale;
-    return 0;
+    // Mismatch — cross-check: does W-derived H agree within 30%?
+    const spanH_fromW = spanW / expRatio;
+    if (Math.abs(spanH_fromW - spanH) / spanH < 0.30) return spanH / scale;
+    return 0;  // major inconsistency — spurious edges
   }
 
-  // No reliable vertical edges (paper on wall with no side contrast) — use H edges only
-  const inner = _innerBrightness(L, pw, topY, botY, cx0, cx1);
-  if (inner<80) return 0;
-  return spanH/scale;
+  // No clear vertical edges (paper sides blend into wall) — trust H edges alone
+  // but require very bright interior to avoid false positives
+  if (inner < 150) return 0;
+  return spanH / scale;
 }
 
 function _innerBrightness(L, pw, topY, botY, x0, x1) {
@@ -1466,15 +1476,35 @@ function startLoop() {
 // ── DEBUG OVERLAY ─────────────────────────────────────────────────────────────
 function drawDebugOverlay(meas, cp) {
   const lines = [`pH:${cachedPaperH.toFixed(0)}px ok:${paperOK?'Y':'N'}`];
+  // Paper detection internals — essential for diagnosing reference-object issues
+  if (_dbgPaperTopY >= 0) {
+    lines.push(`pTop:${_dbgPaperTopY.toFixed(0)} pBot:${_dbgPaperBotY.toFixed(0)}`);
+    lines.push(`pBri:${_dbgPaperInner}`);
+  } else {
+    lines.push(`pTop:-- pBot:--`);
+  }
   if (latestPose && cp) {
     const kps = latestPose.keypoints;
     const nose = kps[KP.NOSE];
-    const la = kps[KP.L_ANKLE], ra = kps[KP.R_ANKLE];
-    const lk = kps[KP.L_KNEE],  rk = kps[KP.R_KNEE];
+    const ls = kps[KP.L_SHOULDER], rs = kps[KP.R_SHOULDER];
+    const la = kps[KP.L_ANKLE],   ra = kps[KP.R_ANKLE];
+    const lk = kps[KP.L_KNEE],    rk = kps[KP.R_KNEE];
     if (nose && nose.score >= MIN_KP_SCORE) {
       const ns = v2s(nose.x, nose.y, cp);
       lines.push(`noseY:${ns.y.toFixed(0)}`);
     }
+    // Shoulder — key for top-body height estimation
+    if (ls?.score >= MIN_KP_SCORE && rs?.score >= MIN_KP_SCORE) {
+      const lss=v2s(ls.x,ls.y,cp), rss=v2s(rs.x,rs.y,cp);
+      const sy=((lss.y+rss.y)/2).toFixed(0);
+      lines.push(`shldY:${sy} (${((ls.score+rs.score)/2).toFixed(2)})`);
+    } else {
+      lines.push(`shldY:-- (${((ls?.score||0+rs?.score||0)/2).toFixed(2)})`);
+    }
+    if (lk && lk.score >= MIN_KP_SCORE) {
+      const s = v2s(lk.x, lk.y, cp);
+      lines.push(`L_kne:${s.y.toFixed(0)} (${lk.score.toFixed(2)})`);
+    } else { lines.push(`L_kne:-- (${(lk?.score||0).toFixed(2)})`); }
     if (la && la.score >= MIN_KP_SCORE) {
       const s = v2s(la.x, la.y, cp);
       lines.push(`L_ank:${s.y.toFixed(0)} (${la.score.toFixed(2)})`);
@@ -1483,16 +1513,12 @@ function drawDebugOverlay(meas, cp) {
       const s = v2s(ra.x, ra.y, cp);
       lines.push(`R_ank:${s.y.toFixed(0)} (${ra.score.toFixed(2)})`);
     } else { lines.push(`R_ank:-- (${(ra?.score||0).toFixed(2)})`); }
-    if (lk && lk.score >= MIN_KP_SCORE) {
-      const s = v2s(lk.x, lk.y, cp);
-      lines.push(`L_kne:${s.y.toFixed(0)} (${lk.score.toFixed(2)})`);
-    }
   }
   if (meas) {
     const hpx = (meas.ankleSY - meas.crownSY).toFixed(0);
     lines.push(`hPx:${hpx} → ${meas.heightCm}cm`);
   }
-  const lh=16, pad=6, w=162;
+  const lh=16, pad=6, w=174;
   const bh = lines.length*lh + pad;
   const rx = oc.width-w-8, ry = instrCardH()+8;
   ctx.save();
@@ -1501,6 +1527,19 @@ function drawDebugOverlay(meas, cp) {
   ctx.fillStyle='#7ec8e3'; ctx.font='11px monospace'; ctx.textAlign='left';
   lines.forEach((l,i) => ctx.fillText(l, rx+pad, ry+pad+(i+0.8)*lh));
   ctx.restore();
+
+  // Visual tick marks on the guide rect showing detected paper edges
+  if (_dbgPaperTopY >= 0) {
+    const g = guideRect();
+    ctx.save();
+    ctx.strokeStyle = '#7ec8e3'; ctx.lineWidth = 1.5;
+    ctx.setLineDash([3,3]);
+    // top edge tick
+    ctx.beginPath(); ctx.moveTo(g.x, _dbgPaperTopY); ctx.lineTo(g.x+g.w, _dbgPaperTopY); ctx.stroke();
+    // bottom edge tick
+    ctx.beginPath(); ctx.moveTo(g.x, _dbgPaperBotY); ctx.lineTo(g.x+g.w, _dbgPaperBotY); ctx.stroke();
+    ctx.restore();
+  }
 }
 
 // ── CAPTURE ───────────────────────────────────────────────────────────────────
