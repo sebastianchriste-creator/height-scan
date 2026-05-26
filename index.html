@@ -1033,7 +1033,7 @@ function detectPaperH(g) {
   // Old approach (strongest-in-each-half) would pick floor/wall junctions or shadows
   // that are stronger than the paper boundary, inflating spanH and shrinking mm/px.
   // New approach: first edge from top = paper top; first edge from bottom = paper bottom.
-  const THRESH = 6.0;  // avg |Gy|; a paper-on-wall edge is typically 15-50
+  const THRESH = 3.0;  // avg |Gy|; white-on-light-wall edges can be subtle (~3-10)
   const margin  = Math.round(PH * 0.04);
   let topY = -1, botY = -1;
 
@@ -1067,9 +1067,9 @@ function detectPaperH(g) {
   // First left/right edges (outermost, same logic as H)
   let lftX = -1, rgtX = -1;
   for (let x = 1; x < Math.round(pw*0.65); x++)
-    if (colE[x] > THRESH) { lftX = x; break; }
+    if (colE[x] > THRESH*0.8) { lftX = x; break; }
   for (let x = pw-2; x >= Math.round(pw*0.35); x--)
-    if (colE[x] > THRESH) { rgtX = x; break; }
+    if (colE[x] > THRESH*0.8) { rgtX = x; break; }
 
   // Store detected bounds in screen-pixel coords for debug overlay
   _dbgPaperTopY = g.y + topY / scale;
@@ -1092,7 +1092,7 @@ function detectPaperH(g) {
 
   // No clear vertical edges (paper sides blend into wall) — trust H edges alone
   // but require very bright interior to avoid false positives
-  if (inner < 150) return 0;
+  if (inner < 140) return 0;
   return spanH / scale;
 }
 
