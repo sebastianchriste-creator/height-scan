@@ -984,8 +984,8 @@ function instrCardH() {
 }
 function guideRect() {
   const W=oc.width, H=oc.height, top=instrCardH();
-  const availH = H - top - 90;   // leave room for bottom controls
-  const gH = availH * 0.24;   // ~24% matches A4 appearance at ~1.7 m distance
+  const availH = H - top - 90;
+  const gH = availH * 0.24;
   const gW = gH * (PAPER[selectedPaper].w / PAPER[selectedPaper].h);
   return { x: W*0.04, y: top + availH*0.08, w: gW, h: gH };
 }
@@ -1081,11 +1081,23 @@ function calcMeas(pose, paperH) {
   const kps=pose.keypoints;
   const nose=kps[KP.NOSE]; if(!nose||nose.score<MIN_KP_SCORE) return null;
   const la=kps[KP.L_ANKLE], ra=kps[KP.R_ANKLE];
+  const lk=kps[KP.L_KNEE],  rk=kps[KP.R_KNEE];
+  // Require higher confidence for ankles — they're often occluded/uncertain.
+  const ANKLE_MIN = 0.35;
   let ankleVY=null;
-  if(la?.score>MIN_KP_SCORE&&ra?.score>MIN_KP_SCORE) ankleVY=(la.y+ra.y)/2;
-  else if(la?.score>MIN_KP_SCORE) ankleVY=la.y;
-  else if(ra?.score>MIN_KP_SCORE) ankleVY=ra.y;
-  else return null;
+  const laOK=la?.score>ANKLE_MIN, raOK=ra?.score>ANKLE_MIN;
+  if(laOK&&raOK)      ankleVY=(la.y+ra.y)/2;
+  else if(laOK)       ankleVY=la.y;
+  else if(raOK)       ankleVY=ra.y;
+  else {
+    // Ankle confidence too low — extrapolate from knees.
+    // Anatomically: nose at 91%, knee at 25%, ankle at 4% of height from floor.
+    // nose→knee = 66% of h;  nose→ankle = 87% of h → ankle = nose + (knee-nose)*(87/66)
+    const lkOK=lk?.score>MIN_KP_SCORE, rkOK=rk?.score>MIN_KP_SCORE;
+    if (!lkOK&&!rkOK) return null;
+    const kneeVY = lkOK&&rkOK ? (lk.y+rk.y)/2 : (lkOK?lk.y:rk.y);
+    ankleVY = nose.y + (kneeVY - nose.y) * (87/66);
+  }
   const a2n=ankleVY-nose.y; if(a2n<40) return null;
   // Crown: nose sits at ~91% of body height, ankle joint at ~4%.
   // crown-to-nose / ankle-to-nose ≈ (100-91)/(91-4) = 9/87 ≈ 0.103
