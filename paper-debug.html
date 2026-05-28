@@ -54,19 +54,21 @@
       color:rgba(255,255,255,0.4);text-transform:uppercase;
     }
 
-    /* ── capture button ── */
-    #cap-btn{
+    /* ── stability ring ── */
+    #stab-ring{
       position:absolute;right:14px;
-      width:54px;height:54px;border-radius:50%;
-      background:#E8604C;border:2px solid rgba(255,255,255,0.3);
-      color:#fff;font-size:22px;cursor:pointer;
-      display:flex;align-items:center;justify-content:center;
-      box-shadow:0 4px 12px rgba(0,0,0,0.4);
-      transition:transform .1s;
-      touch-action:manipulation;
+      width:58px;height:58px;
     }
-    #cap-btn:active{transform:scale(0.92)}
-    #cap-btn.flash{background:#fff}
+    #stab-ring svg{width:100%;height:100%;transform:rotate(-90deg)}
+    #stab-track{fill:none;stroke:rgba(255,255,255,0.12);stroke-width:4}
+    #stab-fill {fill:none;stroke:#4CAF50;stroke-width:4;
+                stroke-linecap:round;
+                stroke-dasharray:163;stroke-dashoffset:163;
+                transition:stroke-dashoffset .15s linear}
+    #stab-icon{
+      position:absolute;inset:0;display:flex;align-items:center;justify-content:center;
+      font-size:22px;
+    }
 
     /* ── captured image preview ── */
     #preview-wrap{
@@ -125,15 +127,21 @@
   </div>
 </div>
 
-<!-- capture button — positioned above panel -->
-<button id="cap-btn" onclick="captureDebug()">📷</button>
+<!-- stability ring (auto-capture indicator) -->
+<div id="stab-ring">
+  <svg viewBox="0 0 58 58">
+    <circle id="stab-track" cx="29" cy="29" r="26"/>
+    <circle id="stab-fill"  cx="29" cy="29" r="26"/>
+  </svg>
+  <div id="stab-icon">📄</div>
+</div>
 
 <!-- captured image preview -->
 <div id="preview-wrap">
   <img id="preview-img" src="" alt="capture">
   <div class="preview-btns">
     <button id="btn-share" onclick="shareCapture()">Share / Save</button>
-    <button id="btn-close" onclick="closePreview()">Close</button>
+    <button id="btn-close" onclick="retake()">Retake</button>
   </div>
 </div>
 
@@ -158,13 +166,36 @@ let capturedBlob=null;
 function resize(){oc.width=window.innerWidth;oc.height=window.innerHeight;}
 window.addEventListener('resize',resize);resize();
 
-// Position capture button above panel
+// Position stability ring above panel
 function positionBtn(){
   const ph=document.getElementById('panel').offsetHeight||140;
-  document.getElementById('cap-btn').style.bottom=(ph+14)+'px';
+  document.getElementById('stab-ring').style.bottom=(ph+14)+'px';
   document.getElementById('methods').style.bottom=ph+'px';
 }
 window.addEventListener('resize',positionBtn);
+
+// ── STABILITY TRACKING ────────────────────────────────────────────────────────
+const STABLE_FRAMES=18, STABLE_TOL=0.04; // 18 frames within 4% → auto-capture
+let pHHist=[], stableCount=0, hasCaptured=false;
+
+function trackStability(pH){
+  if(pH==null){pHHist=[];stableCount=0;return 0;}
+  pHHist.push(pH);if(pHHist.length>30)pHHist.shift();
+  if(pHHist.length<5)return 0;
+  const mean=pHHist.reduce((a,b)=>a+b,0)/pHHist.length;
+  const ok=pHHist.every(v=>Math.abs(v-mean)/mean<STABLE_TOL);
+  stableCount=ok?Math.min(stableCount+1,STABLE_FRAMES):Math.max(stableCount-2,0);
+  return stableCount/STABLE_FRAMES;
+}
+
+function updateStabRing(ratio){
+  const circ=163; // 2π×26 ≈ 163
+  const fill=document.getElementById('stab-fill');
+  const icon=document.getElementById('stab-icon');
+  fill.style.strokeDashoffset=(circ*(1-ratio)).toFixed(1);
+  fill.style.stroke=ratio>=1?'#fff':'#4CAF50';
+  icon.textContent=ratio>=1?'✓':'📄';
+}
 
 // ── COORDINATES ───────────────────────────────────────────────────────────────
 function getCrop(){
@@ -578,18 +609,13 @@ function draw(res){
 
 // ── CAPTURE ───────────────────────────────────────────────────────────────────
 function captureDebug(){
-  const btn=document.getElementById('cap-btn');
-  btn.classList.add('flash');
-  setTimeout(()=>btn.classList.remove('flash'),150);
-  if('vibrate'in navigator)navigator.vibrate([30,15,60]);
-
+  if('vibrate'in navigator)navigator.vibrate([40,20,80]);
   const cap=document.createElement('canvas');
   cap.width=oc.width;cap.height=oc.height;
   const c=cap.getContext('2d');
   const cp=getCrop();
   if(cp)c.drawImage(video,cp.sx,cp.sy,cp.sw,cp.sh,0,0,cap.width,cap.height);
   c.drawImage(oc,0,0);
-
   cap.toBlob(blob=>{
     capturedBlob=blob;
     const url=URL.createObjectURL(blob);
@@ -612,9 +638,12 @@ function downloadCapture(){
   const a=document.createElement('a');
   a.href=URL.createObjectURL(capturedBlob);a.download='paper-debug.jpg';a.click();
 }
-function closePreview(){
+function retake(){
   document.getElementById('preview-wrap').classList.remove('show');
   capturedBlob=null;
+  hasCaptured=false;
+  pHHist=[];stableCount=0;
+  updateStabRing(0);
 }
 
 // ── MAIN LOOP ─────────────────────────────────────────────────────────────────
@@ -627,7 +656,16 @@ async function start(){
 
   positionBtn();
   function loop(){
-    if(video.videoWidth>0){const res=detectPaper(guideRect());draw(res);}
+    if(video.videoWidth>0 && !document.getElementById('preview-wrap').classList.contains('show')){
+      const res=detectPaper(guideRect());
+      const stab=trackStability(res?res.pH:null);
+      updateStabRing(stab);
+      draw(res);
+      if(!hasCaptured && stab>=1.0){
+        hasCaptured=true;
+        captureDebug();
+      }
+    }
     requestAnimationFrame(loop);
   }
   loop();
