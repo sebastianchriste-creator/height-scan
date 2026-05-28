@@ -38,6 +38,7 @@
     .pill.active-A{background:rgba(126,200,227,0.25);border-color:#7ec8e3;color:#7ec8e3}
     .pill.active-B{background:rgba(237,217,78,0.2);border-color:#EDD94E;color:#EDD94E}
     .pill.active-C{background:rgba(76,175,80,0.2);border-color:#4CAF50;color:#4CAF50}
+    .pill.active-D{background:rgba(255,150,50,0.2);border-color:#ff9632;color:#ff9632}
 
     /* ── paper type ── */
     #sel{position:absolute;top:max(20px,env(safe-area-inset-top));right:14px;display:flex;gap:6px}
@@ -104,6 +105,7 @@
   <div class="pill" id="pill-A">▲ Corners</div>
   <div class="pill" id="pill-B">— Lines</div>
   <div class="pill" id="pill-C">◉ Bright</div>
+  <div class="pill" id="pill-D">≋ Var</div>
 </div>
 
 <div id="panel">
@@ -235,18 +237,36 @@ function sampleGuide(g){
   const L=new Float32Array(pw*PH);
   for(let i=0;i<pw*PH;i++)L[i]=0.299*d[i*4]+0.587*d[i*4+1]+0.114*d[i*4+2];
 
-  // Sobel Gx (vertical edges) and Gy (horizontal edges)
+  // 5-tap separable Gaussian blur [1,4,6,4,1]/16 → LG
+  // LG is used for Sobel (better SNR for faint paper edges on white walls).
+  // L (unblurred) is kept for brightness and variance methods.
+  const tmp=new Float32Array(pw*PH);
+  for(let y=0;y<PH;y++){
+    tmp[y*pw+0]=L[y*pw+0];tmp[y*pw+1]=L[y*pw+1];
+    tmp[y*pw+pw-2]=L[y*pw+pw-2];tmp[y*pw+pw-1]=L[y*pw+pw-1];
+    for(let x=2;x<pw-2;x++)
+      tmp[y*pw+x]=(L[y*pw+x-2]+4*L[y*pw+x-1]+6*L[y*pw+x]+4*L[y*pw+x+1]+L[y*pw+x+2])/16;
+  }
+  const LG=new Float32Array(pw*PH);
+  for(let x=0;x<pw;x++){
+    LG[0*pw+x]=tmp[0*pw+x];LG[1*pw+x]=tmp[1*pw+x];
+    LG[(PH-2)*pw+x]=tmp[(PH-2)*pw+x];LG[(PH-1)*pw+x]=tmp[(PH-1)*pw+x];
+    for(let y=2;y<PH-2;y++)
+      LG[y*pw+x]=(tmp[(y-2)*pw+x]+4*tmp[(y-1)*pw+x]+6*tmp[y*pw+x]+4*tmp[(y+1)*pw+x]+tmp[(y+2)*pw+x])/16;
+  }
+
+  // Sobel on blurred luma (cleaner gradients for faint white-on-white edges)
   const Gx=new Float32Array(pw*PH),Gy=new Float32Array(pw*PH);
   for(let y=1;y<PH-1;y++){
     for(let x=1;x<pw-1;x++){
       const i=y*pw+x;
-      Gy[i]=(L[(y+1)*pw+x-1]+2*L[(y+1)*pw+x]+L[(y+1)*pw+x+1]
-             -L[(y-1)*pw+x-1]-2*L[(y-1)*pw+x]-L[(y-1)*pw+x+1])/4;
-      Gx[i]=(L[(y-1)*pw+x+1]+2*L[y*pw+x+1]+L[(y+1)*pw+x+1]
-             -L[(y-1)*pw+x-1]-2*L[y*pw+x-1]-L[(y+1)*pw+x-1])/4;
+      Gy[i]=(LG[(y+1)*pw+x-1]+2*LG[(y+1)*pw+x]+LG[(y+1)*pw+x+1]
+             -LG[(y-1)*pw+x-1]-2*LG[(y-1)*pw+x]-LG[(y-1)*pw+x+1])/4;
+      Gx[i]=(LG[(y-1)*pw+x+1]+2*LG[y*pw+x+1]+LG[(y+1)*pw+x+1]
+             -LG[(y-1)*pw+x-1]-2*LG[y*pw+x-1]-LG[(y+1)*pw+x-1])/4;
     }
   }
-  return{L,Gx,Gy,PH,pw,scale};
+  return{L,LG,Gx,Gy,PH,pw,scale};
 }
 
 // ── METHOD A: CORNER DETECTION ────────────────────────────────────────────────
@@ -345,28 +365,29 @@ function methodLines(sam,g,expRatio){
   const mg=Math.round(PH*0.04);
   const cx0=Math.round(pw*0.08),cx1=Math.round(pw*0.92);
 
-  // Row edge energy (Gy)
+  // Row edge energy: MAX |Gy| across the row (3-5× more sensitive than mean
+  // for faint white-on-white edges where the paper edge only spans ~3-5 px)
   const rowE=new Float32Array(PH);
   for(let y=1;y<PH-1;y++){
-    let s=0;
-    for(let x=cx0;x<cx1;x++)s+=Math.abs(Gy[y*pw+x]);
-    rowE[y]=s/(cx1-cx0);
+    let mx=0;
+    for(let x=cx0;x<cx1;x++){const v=Math.abs(Gy[y*pw+x]);if(v>mx)mx=v;}
+    rowE[y]=mx;
   }
   const rowEs=new Float32Array(PH);
   for(let y=1;y<PH-1;y++)rowEs[y]=(rowE[y-1]+rowE[y]+rowE[y+1])/3;
 
-  // Col edge energy (Gx)
+  // Col edge energy: MAX |Gx| down the column
   const colE=new Float32Array(pw);
   for(let x=1;x<pw-1;x++){
-    let s=0;
-    for(let y=mg;y<PH-mg;y++)s+=Math.abs(Gx[y*pw+x]);
-    colE[x]=s/(PH-2*mg);
+    let mx=0;
+    for(let y=mg;y<PH-mg;y++){const v=Math.abs(Gx[y*pw+x]);if(v>mx)mx=v;}
+    colE[x]=mx;
   }
   const colEs=new Float32Array(pw);
   for(let x=1;x<pw-1;x++)colEs[x]=(colE[x-1]+colE[x]+colE[x+1])/3;
 
-  // Collect all row/col edge peaks via local maxima
-  const ETHR=1.2;
+  // Low threshold to catch faint edges (white paper on white wall)
+  const ETHR=0.5;
   function rowPeaks(){
     const ps=[];
     for(let y=mg;y<PH-mg;y++){
@@ -433,19 +454,75 @@ function methodBrightness(sam,g){
   for(let y=mg;y<PH-mg;y++)maxB=Math.max(maxB,rowBs[y]);
   if(maxB<100)return null;
 
-  const bThr=Math.max(maxB-30,100);
+  // Tight threshold: paper is only 10-15 brightness units brighter than white wall.
+  // maxB-12 means only rows within 12 units of peak are counted as "paper".
+  const bThr=Math.max(maxB-12,100);
   let topY=-1,botY=-1;
   for(let y=mg;y<PH-mg;y++)if(rowBs[y]>=bThr){topY=y;break;}
   for(let y=PH-mg-1;y>=mg;y--)if(rowBs[y]>=bThr){botY=y;break;}
   if(topY<0||botY<=topY+10)return null;
 
   const inner=innerBri(L,pw,topY,botY,cx0,cx1);
-  if(inner<90)return null;
+  if(inner<80)return null;
 
   const pH=(botY-topY)/scale;
   // Low confidence — brightness alone can't distinguish paper from bright wall
-  const confidence=((inner-90)/165)*((maxB-bThr)/30)*0.5;
+  const confidence=((inner-80)/175)*((maxB-bThr)/12)*0.5;
   return{pH,spanH:botY-topY,inner:Math.round(inner),topY,botY,maxB:Math.round(maxB),confidence,scale,g};
+}
+
+// ── METHOD D: VARIANCE / TEXTURE ─────────────────────────────────────────────
+// White paper and white wall can have nearly identical brightness, but paper is
+// geometrically smooth (low row variance) while painted walls have brush/roller
+// texture (higher variance). Score = mean / (1 + √variance) → high for paper.
+// This is the primary method for white-paper-on-white-wall scenarios.
+function methodVariance(sam,g){
+  const{L,PH,pw,scale}=sam;
+  const mg=Math.round(PH*0.04),cx0=Math.round(pw*0.10),cx1=Math.round(pw*0.90);
+  const W=cx1-cx0;
+
+  // Per-row mean and variance of raw luma (unblurred, so texture is visible)
+  const rowMean=new Float32Array(PH),rowVar=new Float32Array(PH);
+  for(let y=0;y<PH;y++){
+    let s=0;for(let x=cx0;x<cx1;x++)s+=L[y*pw+x];
+    const m=s/W;rowMean[y]=m;
+    let v=0;for(let x=cx0;x<cx1;x++){const dv=L[y*pw+x]-m;v+=dv*dv;}
+    rowVar[y]=v/W;
+  }
+
+  // Score: bright + smooth → paper
+  const rowScore=new Float32Array(PH);
+  for(let y=0;y<PH;y++)rowScore[y]=rowMean[y]/(1+Math.sqrt(rowVar[y]));
+
+  // Smooth scores with 5-tap Gaussian
+  const rowScoreS=new Float32Array(PH);
+  rowScoreS[0]=rowScore[0];rowScoreS[1]=rowScore[1];
+  rowScoreS[PH-2]=rowScore[PH-2];rowScoreS[PH-1]=rowScore[PH-1];
+  for(let y=2;y<PH-2;y++)
+    rowScoreS[y]=(rowScore[y-2]+4*rowScore[y-1]+6*rowScore[y]+4*rowScore[y+1]+rowScore[y+2])/16;
+
+  // Find peak score
+  let maxS=0;
+  for(let y=mg;y<PH-mg;y++)maxS=Math.max(maxS,rowScoreS[y]);
+  if(maxS<55)return null;
+
+  // Span of rows with score ≥ 80% of peak (the paper region)
+  const sThr=maxS*0.80;
+  let topY=-1,botY=-1;
+  for(let y=mg;y<PH-mg;y++)if(rowScoreS[y]>=sThr){topY=y;break;}
+  for(let y=PH-mg-1;y>=mg;y--)if(rowScoreS[y]>=sThr){botY=y;break;}
+  if(topY<0||botY<0||botY<=topY+10)return null;
+
+  const inner=innerBri(L,pw,topY,botY,cx0,cx1);
+  if(inner<75)return null;
+
+  const pH=(botY-topY)/scale;
+  // Confidence: how much higher is the paper score vs surrounding wall scores
+  const outerScore=(rowScoreS[mg]+rowScoreS[PH-mg-1])/2;
+  const contrast=(maxS-outerScore)/Math.max(maxS,1);
+  const confidence=contrast*(inner/255)*0.55;
+  return{pH,spanH:botY-topY,inner:Math.round(inner),topY,botY,
+         maxScore:Math.round(maxS),contrast:+contrast.toFixed(2),confidence,scale,g};
 }
 
 // ── COMBINE METHODS ───────────────────────────────────────────────────────────
@@ -457,12 +534,14 @@ function detectPaper(g){
   const A=methodCorners(sam,g,expRatio);
   const B=methodLines(sam,g,expRatio);
   const C=methodBrightness(sam,g);
+  const D=methodVariance(sam,g);
 
   // Collect candidates with their pH and confidence
   const cands=[];
   if(A)cands.push({src:'A',pH:A.pH,conf:A.confidence});
   if(B)cands.push({src:'B',pH:B.pH,conf:B.confidence});
   if(C)cands.push({src:'C',pH:C.pH,conf:C.confidence});
+  if(D)cands.push({src:'D',pH:D.pH,conf:D.confidence});
   if(!cands.length)return null;
 
   // Weighted average of estimates that agree within 30% of the median
@@ -475,13 +554,13 @@ function detectPaper(g){
   const finalPH=wSum>0?phSum/wSum:cands.sort((a,b)=>b.conf-a.conf)[0].pH;
   const finalConf=wSum>0?wSum/agreed.length:0;
   const mmPx=PAPER[selectedPaper].h/finalPH;
-  const inner=A?.inner??B?.inner??C?.inner??0;
+  const inner=A?.inner??B?.inner??C?.inner??D?.inner??0;
   const detRatio=A?.detRatio??B?.detRatio??expRatio;
 
   return{
     pH:finalPH, mmPx, inner, detRatio, expRatio, confidence:finalConf,
-    methods:{A:!!A,B:!!B,C:!!C},
-    cornerResult:A, lineResult:B, briResult:C,
+    methods:{A:!!A,B:!!B,C:!!C,D:!!D},
+    cornerResult:A, lineResult:B, briResult:C, varResult:D,
     diagRatio:A?.diagRatio??null,
     agreed:agreed.map(c=>c.src).join('+'),
   };
@@ -579,6 +658,7 @@ function draw(res){
   document.getElementById('pill-A').className='pill'+(res?.methods?.A?' active-A':'');
   document.getElementById('pill-B').className='pill'+(res?.methods?.B?' active-B':'');
   document.getElementById('pill-C').className='pill'+(res?.methods?.C?' active-C':'');
+  document.getElementById('pill-D').className='pill'+(res?.methods?.D?' active-D':'');
 
   // ── Data panel ────────────────────────────────────────────────────────────
   const set=(id,v,cls)=>{const e=document.getElementById(id);e.textContent=v;e.className='val '+(cls||'dim');};
