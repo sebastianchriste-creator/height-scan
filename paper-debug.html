@@ -813,9 +813,10 @@ function showPreview(reviewOnly){
   document.getElementById('btn-last').classList.remove('show'); // hide while preview open
 }
 
-// "Close" — dismiss preview, keep current scan state intact
+// "Close" — dismiss preview, allow next auto-capture (keeps ring progress)
 function closePreview(){
   document.getElementById('preview-wrap').classList.remove('show');
+  hasCaptured=false; // must reset so the ring can trigger another auto-capture
   updateLastBtn();
 }
 
