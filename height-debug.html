@@ -137,6 +137,15 @@
     <div class="lbl">@ mm/px → 180 cm = ? px</div>
     <div class="val" id="p-ref">—</div>
   </div>
+
+  <div class="cell" style="grid-column:span 2">
+    <div class="lbl">Floor line (strength)</div>
+    <div class="val" id="p-floor">—</div>
+  </div>
+  <div class="cell" style="grid-column:span 2">
+    <div class="lbl">TR corner → floor</div>
+    <div class="val" id="p-trheight">—</div>
+  </div>
 </div>
 
 <!-- stability ring (auto-capture indicator) -->
@@ -177,7 +186,9 @@ const oc=document.getElementById('oc');
 const ctx=oc.getContext('2d');
 const pc=document.createElement('canvas');
 const pctx=pc.getContext('2d',{willReadFrequently:true});
-let capturedBlob=null;
+const floorC=document.createElement('canvas'); // reused for floor detection
+const floorCtx=floorC.getContext('2d',{willReadFrequently:true});
+let capturedBlob=null, lastFloor=null;
 
 function resize(){oc.width=window.innerWidth;oc.height=window.innerHeight;}
 window.addEventListener('resize',resize);resize();
@@ -581,6 +592,56 @@ function detectPaper(g){
   };
 }
 
+// ── FLOOR DETECTION ──────────────────────────────────────────────────────────
+// Scans the strip between the bottom of the guide rect and the top of the data
+// panel looking for the strongest horizontal edge → wall / floor junction.
+// Returns { floorY } in screen coordinates, or null.
+function detectFloor(g){
+  const cp=getCrop();
+  if(!cp||!video.videoWidth)return null;
+
+  const H=oc.height;
+  const stripTop=Math.round(g.y+g.h)+8;  // just below guide rect
+  const stripBot=H-panelH()-8;            // just above data panel
+  const stripH=stripBot-stripTop;
+  if(stripH<30)return null;
+
+  // Sample into a small fixed-size canvas for fast processing
+  const PW=240,PH=Math.min(stripH,90);
+  floorC.width=PW;floorC.height=PH;
+  floorCtx.drawImage(video,
+    cp.sx, stripTop/cp.scale+cp.sy,
+    cp.sw, stripH/cp.scale,
+    0,0,PW,PH);
+
+  const d=floorCtx.getImageData(0,0,PW,PH).data;
+  const L=new Float32Array(PW*PH);
+  for(let i=0;i<PW*PH;i++)L[i]=0.299*d[i*4]+0.587*d[i*4+1]+0.114*d[i*4+2];
+
+  // Row-max |Gy| — more sensitive than mean; floor junction is a sharp line
+  const rowE=new Float32Array(PH);
+  for(let y=1;y<PH-1;y++){
+    let mx=0;
+    for(let x=1;x<PW-1;x++){
+      const gy=Math.abs((L[(y+1)*PW+x-1]+2*L[(y+1)*PW+x]+L[(y+1)*PW+x+1]
+                        -L[(y-1)*PW+x-1]-2*L[(y-1)*PW+x]-L[(y-1)*PW+x+1])/4);
+      if(gy>mx)mx=gy;
+    }
+    rowE[y]=mx;
+  }
+  // 3-tap smooth
+  const rowEs=new Float32Array(PH);
+  for(let y=1;y<PH-2;y++)rowEs[y]=(rowE[y-1]+rowE[y]+rowE[y+1])/3;
+
+  // Find strongest row
+  let maxE=0,bestY=-1;
+  for(let y=2;y<PH-2;y++){if(rowEs[y]>maxE){maxE=rowEs[y];bestY=y;}}
+  if(bestY<0||maxE<1.5)return null;
+
+  const floorY=stripTop+(bestY/PH)*stripH;
+  return{floorY,edgeStr:+maxE.toFixed(1),stripTop,stripBot};
+}
+
 // ── DRAW ──────────────────────────────────────────────────────────────────────
 function draw(res){
   const g=guideRect();
@@ -669,6 +730,51 @@ function draw(res){
     }
   }
 
+  // ── Floor detection + TR height measurement ───────────────────────────────
+  const floor=detectFloor(g);
+  lastFloor=floor;
+
+  if(floor){
+    const W=oc.width;
+    ctx.save();
+    // Dashed orange floor line across full width
+    ctx.strokeStyle='rgba(255,140,0,0.85)';ctx.lineWidth=2;ctx.setLineDash([10,7]);
+    ctx.beginPath();ctx.moveTo(0,floor.floorY);ctx.lineTo(W,floor.floorY);ctx.stroke();
+    ctx.setLineDash([]);
+    // "FLOOR" label
+    ctx.fillStyle='rgba(255,140,0,0.9)';ctx.font='bold 10px monospace';
+    ctx.textAlign='left';ctx.textBaseline='bottom';
+    ctx.fillText('FLOOR  str:'+floor.edgeStr,10,floor.floorY-4);
+    ctx.restore();
+
+    // TR corner height if corner method succeeded
+    if(res&&res.cornerResult){
+      const tr=res.cornerResult.corners.tr;
+      const distPx=floor.floorY-tr.y;
+      if(distPx>10&&res.mmPx>0){
+        const heightCm=(distPx*res.mmPx/10).toFixed(1);
+        const mx=tr.x+28; // x of measurement line
+
+        ctx.save();
+        // Vertical bracket
+        ctx.strokeStyle='rgba(255,210,50,0.9)';ctx.lineWidth=1.5;
+        ctx.beginPath();ctx.moveTo(mx,tr.y);ctx.lineTo(mx,floor.floorY);ctx.stroke();
+        // Tick ends
+        [tr.y,floor.floorY].forEach(ty=>{
+          ctx.beginPath();ctx.moveTo(mx-6,ty);ctx.lineTo(mx+6,ty);ctx.stroke();
+        });
+        // Height label (centred on bracket)
+        const midY=(tr.y+floor.floorY)/2;
+        ctx.fillStyle='rgba(0,0,0,0.6)';
+        ctx.fillRect(mx+8,midY-10,72,20);
+        ctx.fillStyle='#FFD700';ctx.font='bold 13px monospace';
+        ctx.textAlign='left';ctx.textBaseline='middle';
+        ctx.fillText(heightCm+' cm',mx+12,midY);
+        ctx.restore();
+      }
+    }
+  }
+
   // ── Method pills ──────────────────────────────────────────────────────────
   document.getElementById('pill-A').className='pill'+(res?.methods?.A?' active-A':'');
   document.getElementById('pill-B').className='pill'+(res?.methods?.B?' active-B':'');
@@ -699,6 +805,26 @@ function draw(res){
     set('p-status','NO PAPER','bad');
     set('p-exp',PAPER[selectedPaper].w/PAPER[selectedPaper].h>0
         ?(PAPER[selectedPaper].w/PAPER[selectedPaper].h).toFixed(3):'—','dim');
+  }
+
+  // ── Floor + TR height panel update ────────────────────────────────────────
+  const fl=lastFloor; // set just before this is called
+  if(fl){
+    set('p-floor',Math.round(fl.floorY)+' px  (str '+fl.edgeStr+')','ok');
+  } else {
+    set('p-floor','not detected','bad');
+  }
+  if(fl&&res&&res.cornerResult){
+    const tr=res.cornerResult.corners.tr;
+    const distPx=fl.floorY-tr.y;
+    if(distPx>10&&res.mmPx>0){
+      const hcm=(distPx*res.mmPx/10).toFixed(1);
+      set('p-trheight',hcm+' cm','ok');
+    } else {
+      set('p-trheight','—','dim');
+    }
+  } else {
+    set('p-trheight','—','dim');
   }
 }
 
@@ -732,6 +858,25 @@ function drawCaptureOverlay(c,W,H,res){
                color:'#aaa',small:true});
     rows.push({text:`160 cm → ${px160}px   170 cm → ${px170}px`,color:'#7ec8e3'});
     rows.push({text:`180 cm → ${px180}px   190 cm → ${px190}px`,color:'#7ec8e3',bold:true});
+
+    // Floor + TR height measurement
+    rows.push({sep:true});
+    const fl=lastFloor;
+    if(fl&&res.cornerResult){
+      const tr=res.cornerResult.corners.tr;
+      const distPx=fl.floorY-tr.y;
+      if(distPx>10){
+        const hcm=(distPx*res.mmPx/10).toFixed(1);
+        rows.push({text:`Floor detected  (edge str: ${fl.edgeStr})`,color:'rgba(255,140,0,0.9)',small:true});
+        rows.push({text:`TR corner → floor:  ${hcm} cm  (${Math.round(distPx)} px)`,
+                   color:'#FFD700',bold:true});
+      } else {
+        rows.push({text:'TR corner below floor line — check framing',color:'#ff6b6b'});
+      }
+    } else {
+      rows.push({text:`Floor: ${fl?'detected (str '+fl.edgeStr+')':'not detected'}   TR: no corner result`,
+                 color:'#888',small:true});
+    }
   } else {
     rows.push({text:'NO PAPER DETECTED',color:'#ff6b6b',bold:true});
     rows.push({text:`Paper type: ${selectedPaper}  (${paper.w} × ${paper.h} mm)`,color:'#aaa'});
