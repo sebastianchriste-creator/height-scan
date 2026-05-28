@@ -896,6 +896,8 @@ let frameIdx = 0, paperOK = false, cachedPaperH = 0, paperMissCount = 0;
 let framingIssue = null; // 'head-cut' | 'feet-cut' | null
 // Paper detection debug state (updated each detectPaperH call)
 let _dbgPaperTopY = -1, _dbgPaperBotY = -1, _dbgPaperInner = 0;
+// Corner detection debug state
+let _dbgCornerDiagAgree = -1, _dbgCornerMmPx = 0, _dbgCornerCorners = null;
 let heightHist = [], stableCount = 0;
 let hasAutoCaptured = false, rafId = null;
 let lastMeas = null;
@@ -1125,6 +1127,147 @@ function _innerBrightness(L, pw, topY, botY, x0, x1) {
   for (let y=iy0; y<iy1; y++)
     for (let x=x0; x<x1; x++){s+=L[y*pw+x];n++;}
   return n>0 ? s/n : 0;
+}
+
+// ── CORNER-BASED SCALE DETECTION ─────────────────────────────────────────────
+// Detects the four corners of the paper quadrilateral, then triangulates
+// mm/px from three independent measurements: R side, L side, diagonal.
+// Returns paper height in screen pixels (= paper.h / mmPxTriang), same units
+// as detectPaperH(), so it can be a drop-in priority source.
+// Returns null if detection fails OR if diagonal agreement < 75% (unreliable corners).
+function detectCornerScale(g) {
+  _dbgCornerDiagAgree = -1; _dbgCornerMmPx = 0; _dbgCornerCorners = null;
+  const cp = getCrop();
+  if (!cp || !video.videoWidth) return null;
+
+  const PH = 220, scl = PH/g.h, pw = Math.round(g.w*scl);
+  pc.width = pw; pc.height = PH;
+  pctx.drawImage(video, g.x/cp.scale+cp.sx, g.y/cp.scale+cp.sy,
+                        g.w/cp.scale, g.h/cp.scale, 0, 0, pw, PH);
+  const d = pctx.getImageData(0, 0, pw, PH).data;
+  const L = new Float32Array(pw*PH);
+  for (let i = 0; i < pw*PH; i++)
+    L[i] = 0.299*d[i*4] + 0.587*d[i*4+1] + 0.114*d[i*4+2];
+
+  // 5-tap separable Gaussian blur — improves edge SNR for white-on-white
+  const tmp = new Float32Array(pw*PH);
+  for (let y = 0; y < PH; y++) {
+    tmp[y*pw]=L[y*pw]; tmp[y*pw+1]=L[y*pw+1];
+    tmp[y*pw+pw-2]=L[y*pw+pw-2]; tmp[y*pw+pw-1]=L[y*pw+pw-1];
+    for (let x = 2; x < pw-2; x++)
+      tmp[y*pw+x]=(L[y*pw+x-2]+4*L[y*pw+x-1]+6*L[y*pw+x]+4*L[y*pw+x+1]+L[y*pw+x+2])/16;
+  }
+  const LG = new Float32Array(pw*PH);
+  for (let x = 0; x < pw; x++) {
+    LG[x]=tmp[x]; LG[pw+x]=tmp[pw+x];
+    LG[(PH-2)*pw+x]=tmp[(PH-2)*pw+x]; LG[(PH-1)*pw+x]=tmp[(PH-1)*pw+x];
+    for (let y = 2; y < PH-2; y++)
+      LG[y*pw+x]=(tmp[(y-2)*pw+x]+4*tmp[(y-1)*pw+x]+6*tmp[y*pw+x]+4*tmp[(y+1)*pw+x]+tmp[(y+2)*pw+x])/16;
+  }
+
+  // Sobel on blurred luma
+  const Gx = new Float32Array(pw*PH), Gy = new Float32Array(pw*PH);
+  for (let y = 1; y < PH-1; y++) {
+    for (let x = 1; x < pw-1; x++) {
+      const i = y*pw+x;
+      Gy[i]=(LG[(y+1)*pw+x-1]+2*LG[(y+1)*pw+x]+LG[(y+1)*pw+x+1]
+             -LG[(y-1)*pw+x-1]-2*LG[(y-1)*pw+x]-LG[(y-1)*pw+x+1])/4;
+      Gx[i]=(LG[(y-1)*pw+x+1]+2*LG[y*pw+x+1]+LG[(y+1)*pw+x+1]
+             -LG[(y-1)*pw+x-1]-2*LG[y*pw+x-1]-LG[(y+1)*pw+x-1])/4;
+    }
+  }
+
+  // Corner response R = |Gx|·|Gy| (strong where BOTH gradients fire → corners)
+  const R = new Float32Array(pw*PH);
+  let maxR = 0;
+  for (let i = 0; i < pw*PH; i++) {
+    R[i] = Math.abs(Gx[i]) * Math.abs(Gy[i]);
+    if (R[i] > maxR) maxR = R[i];
+  }
+  if (maxR < 4) return null;
+
+  // NMS 7×7
+  const NR = 7, minR = maxR*0.04, peaks = [];
+  for (let y = NR; y < PH-NR; y++) {
+    for (let x = NR; x < pw-NR; x++) {
+      const r = R[y*pw+x]; if (r < minR) continue;
+      let best = true;
+      outer: for (let dy = -NR; dy <= NR; dy++)
+        for (let dx = -NR; dx <= NR; dx++) {
+          if (!dx && !dy) continue;
+          if (R[(y+dy)*pw+(x+dx)] > r) { best=false; break outer; }
+        }
+      if (best) peaks.push({x, y, r});
+    }
+  }
+  if (peaks.length < 4) return null;
+  peaks.sort((a,b) => b.r - a.r);
+
+  // Brightness centroid → dynamic quadrant split (handles off-centre paper)
+  let cx = 0, cy = 0, tb = 0;
+  for (let y = 0; y < PH; y++)
+    for (let x = 0; x < pw; x++) { const b=L[y*pw+x]; cx+=x*b; cy+=y*b; tb+=b; }
+  if (tb > 0) { cx/=tb; cy/=tb; } else { cx=pw/2; cy=PH/2; }
+
+  // Best peak per quadrant
+  const Q = [null, null, null, null];
+  for (const p of peaks) {
+    const q = (p.y >= cy ? 2 : 0) + (p.x >= cx ? 1 : 0);
+    if (!Q[q] || p.r > Q[q].r) Q[q] = p;
+  }
+  if (Q.some(c => !c)) return null;
+  const [tl, tr, bl, br] = Q;
+  if (tr.x<=tl.x || br.x<=bl.x || bl.y<=tl.y || br.y<=tr.y) return null;
+
+  // Inner brightness guard — rejects dark/empty regions
+  const bx0=Math.min(tl.x,bl.x), bx1=Math.max(tr.x,br.x);
+  const by0=Math.min(tl.y,tr.y), by1=Math.max(bl.y,br.y);
+  let bri=0, bn=0;
+  const isy=by0+Math.round((by1-by0)*0.12), iey=by1-Math.round((by1-by0)*0.12);
+  const isx=bx0+Math.round((bx1-bx0)*0.08), iex=bx1-Math.round((bx1-bx0)*0.08);
+  for (let y=isy; y<iey; y++) for (let x=isx; x<iex; x++) { bri+=L[y*pw+x]; bn++; }
+  if (bn > 0) bri/=bn;
+  if (bri < 85) return null;
+
+  // Map detected corners to screen coordinates
+  const toScr = p => ({x: g.x+(p.x/pw)*g.w, y: g.y+(p.y/PH)*g.h});
+  const TL=toScr(tl), TR=toScr(tr), BL=toScr(bl), BR=toScr(br);
+
+  // ── THREE INDEPENDENT mm/px ESTIMATES ────────────────────────────────────
+  const paper = PAPER[selectedPaper];
+  const rightPx = Math.hypot(TR.x-BR.x, TR.y-BR.y); // R side = paper.h mm
+  const leftPx  = Math.hypot(TL.x-BL.x, TL.y-BL.y); // L side = paper.h mm
+  const d1 = Math.hypot(TL.x-BR.x, TL.y-BR.y);       // diagonal TL→BR
+  const d2 = Math.hypot(TR.x-BL.x, TR.y-BL.y);       // diagonal TR→BL
+  const diagMm = Math.sqrt(paper.w**2 + paper.h**2);  // 363.08 mm for A4
+  const diagAvgPx = (d1+d2)/2;
+
+  const mmPx_right = paper.h / rightPx;
+  const mmPx_left  = paper.h / leftPx;
+  const mmPx_diag  = diagMm  / diagAvgPx;
+
+  // Median-anchored weighted average — diagonal weight 0.8 (more skew-sensitive)
+  const triEst = [{v:mmPx_right,w:1.0},{v:mmPx_left,w:1.0},{v:mmPx_diag,w:0.8}];
+  const medVal = [mmPx_right, mmPx_left, mmPx_diag].slice().sort((a,b)=>a-b)[1];
+  const agreed = triEst.filter(e => Math.abs(e.v-medVal)/medVal < 0.10);
+  let wS=0, vS=0;
+  for (const e of agreed) { vS+=e.v*e.w; wS+=e.w; }
+  const mmPxTriang = wS > 0 ? vS/wS : medVal;
+
+  // Diagonal agreement — how closely the diagonal estimate matches the side average
+  const sideMmPx = (mmPx_right + mmPx_left) / 2;
+  const diagAgreePct = Math.round(Math.max(0, 100 - Math.abs(mmPx_diag-sideMmPx)/sideMmPx*100));
+
+  // Store debug state for overlay
+  _dbgCornerDiagAgree = diagAgreePct;
+  _dbgCornerMmPx = +mmPxTriang.toFixed(4);
+  _dbgCornerCorners = {TL, TR, BL, BR};
+
+  // Gate: only trust corners when diagonal cross-validates sides (≥75% agreement)
+  if (diagAgreePct < 75) return null;
+
+  // Return as equivalent screen-px paper height so callers need no changes
+  return paper.h / mmPxTriang;
 }
 
 // ── POSE DETECTION ────────────────────────────────────────────────────────────
@@ -1478,7 +1621,13 @@ function startLoop() {
     ctx.clearRect(0,0,oc.width,oc.height);
     const cp=getCrop(); if(!cp) return;
     const g=guideRect();
-    if(frameIdx%5===0){const ph=detectPaperH(g);paperOK=ph>0;if(ph>0){cachedPaperH=ph;paperMissCount=0;}else if(++paperMissCount>8)cachedPaperH=0;}
+    if(frameIdx%5===0){
+      // Try corner triangulation first (diagonal-validated), fall back to brightness/Sobel
+      const ph = detectCornerScale(g) || detectPaperH(g);
+      paperOK = ph > 0;
+      if(ph > 0){ cachedPaperH=ph; paperMissCount=0; }
+      else if(++paperMissCount > 8) cachedPaperH=0;
+    }
     if(frameIdx%2===0) runPose();
     framingIssue=checkFraming(latestPose,cp);
     const meas=(!framingIssue)?calcMeas(latestPose,cachedPaperH):null;
@@ -1486,6 +1635,22 @@ function startLoop() {
     // Draw
     drawPersonGuide();
     drawPaperGuide(g, paperOK, cachedPaperH);
+    // Draw corner outline when triangulation is confident (diagAgree ≥ 75%)
+    if(_dbgCornerCorners && _dbgCornerDiagAgree >= 75){
+      const C=_dbgCornerCorners;
+      ctx.save();
+      ctx.strokeStyle='rgba(126,200,227,0.75)'; ctx.lineWidth=1.5;
+      ctx.beginPath();
+      ctx.moveTo(C.TL.x,C.TL.y); ctx.lineTo(C.TR.x,C.TR.y);
+      ctx.lineTo(C.BR.x,C.BR.y); ctx.lineTo(C.BL.x,C.BL.y);
+      ctx.closePath(); ctx.stroke();
+      [C.TL,C.TR,C.BL,C.BR].forEach(c=>{
+        ctx.beginPath(); ctx.arc(c.x,c.y,5,0,Math.PI*2);
+        ctx.fillStyle='#7ec8e3'; ctx.fill();
+        ctx.strokeStyle='#fff'; ctx.lineWidth=1; ctx.stroke();
+      });
+      ctx.restore();
+    }
     if(latestPose&&cp) drawSkeleton(latestPose,cp);
     if(meas&&paperOK) drawHeightLine(meas);
     drawDebugOverlay(meas, cp);
@@ -1497,12 +1662,23 @@ function startLoop() {
 
 // ── DEBUG OVERLAY ─────────────────────────────────────────────────────────────
 function drawDebugOverlay(meas, cp) {
-  const lines = [`pH:${cachedPaperH.toFixed(0)}px ok:${paperOK?'Y':'N'}`];
-  // Paper detection internals — essential for diagnosing reference-object issues
-  if (_dbgPaperTopY >= 0) {
+  // Show corner-triangulated mm/px when available, else brightness/Sobel fallback
+  const usingCorners = _dbgCornerDiagAgree >= 75;
+  const mmPxShow = usingCorners ? _dbgCornerMmPx
+                                : (cachedPaperH > 0 ? (PAPER[selectedPaper].h/cachedPaperH).toFixed(3) : 0);
+  const lines = [
+    `pH:${cachedPaperH.toFixed(0)}px ok:${paperOK?'Y':'N'}`,
+    usingCorners
+      ? `⊿${_dbgCornerDiagAgree}% mm/px:${mmPxShow} ▲`   // corner triangulated
+      : (_dbgCornerDiagAgree >= 0
+          ? `⊿${_dbgCornerDiagAgree}% (low) fallback`       // corners found but low agreement
+          : `corners:n/a fallback`),                         // no corners at all
+  ];
+  // Brightness/Sobel details (only when corner method didn't succeed)
+  if (!usingCorners && _dbgPaperTopY >= 0) {
     lines.push(`pTop:${_dbgPaperTopY.toFixed(0)} pBot:${_dbgPaperBotY.toFixed(0)}`);
     lines.push(`pBri:${_dbgPaperInner}`);
-  } else {
+  } else if (!usingCorners) {
     lines.push(`pTop:-- pBot:--`);
   }
   if (latestPose && cp) {
@@ -1610,7 +1786,9 @@ function diagnoseCaptureError() {
 }
 
 captureBtn.addEventListener('click',()=>{
-  const m=calcMeas(latestPose,cachedPaperH||detectPaperH(guideRect()));
+  const g=guideRect();
+  const ph=cachedPaperH||(detectCornerScale(g)||detectPaperH(g));
+  const m=calcMeas(latestPose, ph);
   if(m){hasAutoCaptured=true;doCapture(m);}
   else { showScanError(diagnoseCaptureError()); }
 });
