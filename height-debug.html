@@ -799,16 +799,52 @@ function draw(res){
       // Paper height in screen px from each side (already in screen coords via toScr)
       const rightPx=dist(C.tr,C.br);
       const leftPx =dist(C.tl,C.bl);
-      const paperPxH=(rightPx+leftPx)/2;  // avg both sides = 297 mm reference
-      const mmPxDirect=297/paperPxH;      // mm per screen pixel
+      const paperPxH=(rightPx+leftPx)/2;  // avg both sides = paper.h mm reference
+
+      // ── THREE INDEPENDENT mm/px ESTIMATES ────────────────────────────────
+      // 1) Right vertical side: dist(TR,BR) = paper.h mm
+      // 2) Left vertical side:  dist(TL,BL) = paper.h mm
+      // 3) Diagonal:            dist(TL,BR) or dist(TR,BL) = sqrt(w²+h²) mm
+      //    For A4: sqrt(210²+297²) = 363.08 mm
+      //    Rearranged: 297mm equiv from diagonal = diagAvgPx / (diagMm/paper.h)
+      const paper=PAPER[selectedPaper];
+      const d1_scr=dist(C.tl,C.br), d2_scr=dist(C.tr,C.bl);
+      const diagAvgPx=(d1_scr+d2_scr)/2;
+      const diagMm=Math.sqrt(paper.w**2+paper.h**2); // 363.08mm for A4
+      const diagPxEquiv=diagAvgPx/(diagMm/paper.h);  // diagonal-derived paper.h in screen px
+
+      const mmPx_right=paper.h/rightPx;
+      const mmPx_left =paper.h/leftPx;
+      const mmPx_diag =diagMm/diagAvgPx;
+
+      // ── TRIANGULATE ───────────────────────────────────────────────────────
+      // Median-anchored weighted average — reject estimates > 10% from median.
+      // Diagonal gets slightly lower weight (more sensitive to quadrilateral skew).
+      const triEst=[{v:mmPx_right,w:1.0},{v:mmPx_left,w:1.0},{v:mmPx_diag,w:0.8}];
+      const medVal=[mmPx_right,mmPx_left,mmPx_diag].slice().sort((a,b)=>a-b)[1];
+      const triAgreed=triEst.filter(e=>Math.abs(e.v-medVal)/medVal<0.10);
+      let _wS=0,_vS=0;
+      for(const e of triAgreed){_vS+=e.v*e.w;_wS+=e.w;}
+      const mmPxTriang=_wS>0?_vS/_wS:medVal;
+
+      // Diagonal agreement vs side average — high % = corners are reliable
+      const sideMmPx=(mmPx_right+mmPx_left)/2;
+      const diagAgreePct=Math.round(Math.max(0,100-Math.abs(mmPx_diag-sideMmPx)/sideMmPx*100));
 
       // Store on res so panel + overlay can read it
-      res._paperPxH=+paperPxH.toFixed(1);
-      res._mmPxDirect=+mmPxDirect.toFixed(4);
+      res._paperPxH   =+paperPxH.toFixed(1);
+      res._diagPxEquiv=+diagPxEquiv.toFixed(1);
+      res._mmPx_right =+mmPx_right.toFixed(4);
+      res._mmPx_left  =+mmPx_left.toFixed(4);
+      res._mmPx_diag  =+mmPx_diag.toFixed(4);
+      res._mmPxTriang =+mmPxTriang.toFixed(4);
+      res._mmPxDirect =+mmPxTriang.toFixed(4); // alias for overlay compat
+      res._diagAgreePct=diagAgreePct;
+      res._agreeCount =triAgreed.length;
 
       const distPx=floor.floorAt(C.tr.x)-C.tr.y;
       if(distPx>10){
-        const heightCm=(distPx*mmPxDirect/10).toFixed(1);
+        const heightCm=(distPx*mmPxTriang/10).toFixed(1);
         res._trHeightCm=heightCm;
         res._trDistPx=Math.round(distPx);
 
@@ -855,8 +891,8 @@ function draw(res){
     const A=res.cornerResult,B=res.lineResult;
     const spanH=A?.spanH??B?.spanH??0,spanW=A?.spanW??B?.spanW??0;
     set('p-span',spanH.toFixed(0)+' × '+spanW.toFixed(0),'dim');
-    // p-ref uses direct mmPx when available, blended otherwise
-    const mmPxForRef=res._mmPxDirect||res.mmPx;
+    // p-ref uses triangulated mmPx when available, blended otherwise
+    const mmPxForRef=res._mmPxTriang||res._mmPxDirect||res.mmPx;
     const ref=Math.round(1800/mmPxForRef);
     set('p-ref',ref+' px',ref>200&&ref<2000?'ok':'bad');
     // Show blended pH in span cell as debug info
@@ -877,10 +913,11 @@ function draw(res){
   } else {
     set('p-floor','not detected','bad');
   }
-  // Direct calculation: paper px height from corners + TR→floor
-  if(res&&res._paperPxH){
-    set('p-ph',res._paperPxH+' px  →  '+res._mmPxDirect+' mm/px','ok');
-    set('p-mmPx','direct (TR-BR avg)','dim');
+  // Triangulated mm/px: sides + diagonal → single trusted value
+  if(res&&res._mmPxTriang){
+    const agreeColor=res._diagAgreePct>=95?'ok':res._diagAgreePct>=80?'dim':'warn';
+    set('p-ph','sides:'+res._paperPxH+'px  diag:'+res._diagPxEquiv+'px','ok');
+    set('p-mmPx',res._mmPxTriang+' mm/px  ⊿'+res._diagAgreePct+'%',agreeColor);
   }
   if(fl&&res&&res._trHeightCm){
     set('p-trheight',res._trHeightCm+' cm  ('+res._trDistPx+' px)','ok');
@@ -898,22 +935,28 @@ function drawCaptureOverlay(c,W,H,res){
   // ── Build text rows ────────────────────────────────────────────────────────
   const rows=[];
   if(res){
-    // Pick ONE mm/px: prefer direct corner measurement, fall back to blended
-    const hasCorners=!!res._paperPxH;
-    const mmPx=hasCorners?res._mmPxDirect:res.mmPx;
-    const mmPxSrc=hasCorners?'TR-BR direct':'blended ⚠';
+    // Pick ONE mm/px: prefer triangulated corner measurement, fall back to blended
+    const hasCorners=!!res._mmPxTriang;
+    const mmPx=hasCorners?res._mmPxTriang:res.mmPx;
+    const mmPxSrc=hasCorners?`triag(${res._agreeCount}/3)`:'blended ⚠';
     const methods=Object.entries(res.methods).filter(([,v])=>v).map(([k])=>k).join('+');
 
     rows.push({text:`${selectedPaper}  ·  Methods: ${methods||'—'}  ·  Conf: ${(res.confidence*100).toFixed(0)}%`,
                color:'#4CAF50',bold:true});
-    // Scale line — single source of truth
-    rows.push({text:`Scale: ${hasCorners?res._paperPxH+'px':'pH='+res.pH.toFixed(0)+'px'} = 297mm  →  1px = ${(+mmPx).toFixed(3)}mm  (${mmPxSrc})`,
+    // Scale line — single source of truth (triangulated)
+    rows.push({text:`Scale: ${hasCorners?res._paperPxH+'px (sides)':'pH='+res.pH.toFixed(0)+'px'} = ${PAPER[selectedPaper].h}mm  →  1px = ${(+mmPx).toFixed(3)}mm  (${mmPxSrc})`,
                color:hasCorners?'#eee':'#EDD94E'});
-    rows.push({text:`Ratio: ${res.detRatio.toFixed(3)} (exp ${res.expRatio.toFixed(3)})  Diag: ${res.diagRatio!=null?res.diagRatio.toFixed(3):'n/a'}  Bri: ${res.inner}/255`,
-               color:'#aaa',small:true});
-    // Debug: show blended pH if it differs significantly from direct
+    // Triangulation breakdown: R side / L side / diagonal → single value
     if(hasCorners){
-      const pct=Math.round(Math.abs(res._mmPxDirect-res.mmPx)/res._mmPxDirect*100);
+      const dColor=res._diagAgreePct>=90?'#7ec8e3':res._diagAgreePct>=75?'#EDD94E':'#ff6b6b';
+      rows.push({text:`R:${res._mmPx_right.toFixed(3)}  L:${res._mmPx_left.toFixed(3)}  Diag:${res._mmPx_diag.toFixed(3)}  → ${res._mmPxTriang.toFixed(3)}  ⊿${res._diagAgreePct}%`,
+                 color:dColor,small:true});
+    }
+    rows.push({text:`Ratio: ${res.detRatio.toFixed(3)} (exp ${res.expRatio.toFixed(3)})  Rect: ${res.diagRatio!=null?res.diagRatio.toFixed(3):'n/a'}  Bri: ${res.inner}/255`,
+               color:'#aaa',small:true});
+    // Debug: show blended pH if it differs significantly from triangulated
+    if(hasCorners){
+      const pct=Math.round(Math.abs(res._mmPxTriang-res.mmPx)/res._mmPxTriang*100);
       if(pct>15)rows.push({text:`⚠ blended mm/px=${res.mmPx.toFixed(3)} differs ${pct}% — blended pH unreliable`,
                            color:'#ff6b6b',small:true});
     }
