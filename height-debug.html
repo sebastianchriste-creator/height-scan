@@ -855,8 +855,12 @@ function draw(res){
     const A=res.cornerResult,B=res.lineResult;
     const spanH=A?.spanH??B?.spanH??0,spanW=A?.spanW??B?.spanW??0;
     set('p-span',spanH.toFixed(0)+' × '+spanW.toFixed(0),'dim');
-    const ref=Math.round(1800/res.mmPx);
-    set('p-ref',ref+' px',ref>200&&ref<900?'ok':'bad');
+    // p-ref uses direct mmPx when available, blended otherwise
+    const mmPxForRef=res._mmPxDirect||res.mmPx;
+    const ref=Math.round(1800/mmPxForRef);
+    set('p-ref',ref+' px',ref>200&&ref<2000?'ok':'bad');
+    // Show blended pH in span cell as debug info
+    set('p-span',spanH.toFixed(0)+' × '+spanW.toFixed(0)+'  [blended pH='+res.pH.toFixed(0)+']','dim');
   } else {
     ['p-ph','p-mmPx','p-bri','p-ratio','p-diag','p-conf','p-span','p-ref']
       .forEach(id=>set(id,'—','bad'));
@@ -894,38 +898,45 @@ function drawCaptureOverlay(c,W,H,res){
   // ── Build text rows ────────────────────────────────────────────────────────
   const rows=[];
   if(res){
-    const rOk=Math.abs(res.detRatio-res.expRatio)/res.expRatio<0.25;
+    // Pick ONE mm/px: prefer direct corner measurement, fall back to blended
+    const hasCorners=!!res._paperPxH;
+    const mmPx=hasCorners?res._mmPxDirect:res.mmPx;
+    const mmPxSrc=hasCorners?'TR-BR direct':'blended ⚠';
     const methods=Object.entries(res.methods).filter(([,v])=>v).map(([k])=>k).join('+');
+
     rows.push({text:`${selectedPaper}  ·  Methods: ${methods||'—'}  ·  Conf: ${(res.confidence*100).toFixed(0)}%`,
                color:'#4CAF50',bold:true});
-    rows.push({text:`pH: ${res.pH.toFixed(1)} px   mm/px: ${res.mmPx.toFixed(3)}   Inner bri: ${res.inner}/255`,
-               color:'#eee'});
-    rows.push({text:`Ratio det: ${res.detRatio.toFixed(3)} (exp ${res.expRatio.toFixed(3)})${rOk?'  ✓':'  ⚠'}   Diag: ${res.diagRatio!=null?res.diagRatio.toFixed(3):'n/a'}`,
-               color:rOk?'#eee':'#EDD94E'});
+    // Scale line — single source of truth
+    rows.push({text:`Scale: ${hasCorners?res._paperPxH+'px':'pH='+res.pH.toFixed(0)+'px'} = 297mm  →  1px = ${(+mmPx).toFixed(3)}mm  (${mmPxSrc})`,
+               color:hasCorners?'#eee':'#EDD94E'});
+    rows.push({text:`Ratio: ${res.detRatio.toFixed(3)} (exp ${res.expRatio.toFixed(3)})  Diag: ${res.diagRatio!=null?res.diagRatio.toFixed(3):'n/a'}  Bri: ${res.inner}/255`,
+               color:'#aaa',small:true});
+    // Debug: show blended pH if it differs significantly from direct
+    if(hasCorners){
+      const pct=Math.round(Math.abs(res._mmPxDirect-res.mmPx)/res._mmPxDirect*100);
+      if(pct>15)rows.push({text:`⚠ blended mm/px=${res.mmPx.toFixed(3)} differs ${pct}% — blended pH unreliable`,
+                           color:'#ff6b6b',small:true});
+    }
 
     // Separator
     rows.push({sep:true});
 
-    // Hypothetical size calculations
-    const px160=Math.round(1600/res.mmPx);
-    const px170=Math.round(1700/res.mmPx);
-    const px180=Math.round(1800/res.mmPx);
-    const px190=Math.round(1900/res.mmPx);
-    rows.push({text:`Scale: 1px = ${res.mmPx.toFixed(2)} mm  →  ${paper.w}mm × ${paper.h}mm`,
-               color:'#aaa',small:true});
+    // Scale table using the single chosen mm/px
+    const px160=Math.round(1600/mmPx);
+    const px170=Math.round(1700/mmPx);
+    const px180=Math.round(1800/mmPx);
+    const px190=Math.round(1900/mmPx);
     rows.push({text:`160 cm → ${px160}px   170 cm → ${px170}px`,color:'#7ec8e3'});
     rows.push({text:`180 cm → ${px180}px   190 cm → ${px190}px`,color:'#7ec8e3',bold:true});
 
-    // Direct floor + TR height measurement
+    // Floor + TR height
     rows.push({sep:true});
     const fl=lastFloor;
-    if(fl&&res._paperPxH){
-      rows.push({text:`Paper: ${res._paperPxH}px = 297mm  →  1px = ${res._mmPxDirect}mm`,
+    if(fl&&res._trHeightCm){
+      rows.push({text:`Floor slope: ${fl.slopeDeg}°  str: ${fl.edgeStr}  pts: ${fl.points.length}/8`,
                  color:'rgba(255,140,0,0.9)',small:true});
-      if(res._trHeightCm){
-        rows.push({text:`TR corner → floor:  ${res._trHeightCm} cm  (${res._trDistPx} px)`,
-                   color:'#FFD700',bold:true});
-      }
+      rows.push({text:`TR corner → floor:  ${res._trHeightCm} cm  (${res._trDistPx} px)`,
+                 color:'#FFD700',bold:true});
     } else {
       rows.push({text:`Floor: ${fl?'detected':'not detected'}   Corners: ${res.cornerResult?'ok':'missing'}`,
                  color:'#888',small:true});
