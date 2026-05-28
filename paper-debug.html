@@ -84,7 +84,17 @@
       padding:10px 20px;border-radius:30px;border:none;font:bold 13px monospace;cursor:pointer;
     }
     #btn-share{background:#7ec8e3;color:#111}
-    #btn-close{background:rgba(255,255,255,0.15);color:#fff;border:1px solid rgba(255,255,255,0.3)}
+    #btn-retake{background:rgba(255,255,255,0.15);color:#fff;border:1px solid rgba(255,255,255,0.3)}
+    #btn-newscan{background:#E8604C;color:#fff;border:none}
+
+    /* ── last-capture button (live view) ── */
+    #btn-last{
+      position:absolute;left:14px;
+      background:rgba(0,0,0,0.72);border:1px solid rgba(255,255,255,0.3);
+      color:#eee;font:bold 11px monospace;padding:9px 16px;border-radius:24px;
+      display:none;cursor:pointer;letter-spacing:.04em;
+    }
+    #btn-last.show{display:block}
   </style>
 </head>
 <body>
@@ -138,12 +148,16 @@
   <div id="stab-icon">📄</div>
 </div>
 
+<!-- last-capture button (shown during live scanning) -->
+<button id="btn-last" onclick="showLast()">📷 Last</button>
+
 <!-- captured image preview -->
 <div id="preview-wrap">
   <img id="preview-img" src="" alt="capture">
   <div class="preview-btns">
     <button id="btn-share" onclick="shareCapture()">Share / Save</button>
-    <button id="btn-close" onclick="retake()">Retake</button>
+    <button id="btn-retake" onclick="closePreview()">Close</button>
+    <button id="btn-newscan" onclick="newScan()" style="display:none">New Scan</button>
   </div>
 </div>
 
@@ -168,17 +182,18 @@ let capturedBlob=null;
 function resize(){oc.width=window.innerWidth;oc.height=window.innerHeight;}
 window.addEventListener('resize',resize);resize();
 
-// Position stability ring above panel
+// Position stability ring and last-capture button above panel
 function positionBtn(){
   const ph=document.getElementById('panel').offsetHeight||140;
   document.getElementById('stab-ring').style.bottom=(ph+14)+'px';
   document.getElementById('methods').style.bottom=ph+'px';
+  document.getElementById('btn-last').style.bottom=(ph+22)+'px';
 }
 window.addEventListener('resize',positionBtn);
 
 // ── STABILITY TRACKING ────────────────────────────────────────────────────────
 const STABLE_FRAMES=18, STABLE_TOL=0.04; // 18 frames within 4% → auto-capture
-let pHHist=[], stableCount=0, hasCaptured=false, lastRes=null;
+let pHHist=[], stableCount=0, hasCaptured=false, lastRes=null, lastCapturedBlob=null;
 
 function trackStability(pH){
   if(pH==null){pHHist=[];stableCount=0;return 0;}
@@ -768,9 +783,10 @@ function captureDebug(){
   drawCaptureOverlay(c,cap.width,cap.height,lastRes);
   cap.toBlob(blob=>{
     capturedBlob=blob;
+    lastCapturedBlob=blob; // persist across retakes for "Last" button
     const url=URL.createObjectURL(blob);
     document.getElementById('preview-img').src=url;
-    document.getElementById('preview-wrap').classList.add('show');
+    showPreview(false); // false = just-captured mode (shows New Scan)
   },'image/jpeg',0.90);
 }
 
@@ -788,12 +804,43 @@ function downloadCapture(){
   const a=document.createElement('a');
   a.href=URL.createObjectURL(capturedBlob);a.download='paper-debug.jpg';a.click();
 }
-function retake(){
+// Show the preview overlay.
+// reviewOnly=true  → user tapped "Last"; scan is still running, don't show New Scan
+// reviewOnly=false → just auto-captured; show New Scan button too
+function showPreview(reviewOnly){
+  document.getElementById('preview-wrap').classList.add('show');
+  document.getElementById('btn-newscan').style.display=reviewOnly?'none':'';
+  document.getElementById('btn-last').classList.remove('show'); // hide while preview open
+}
+
+// "Close" — dismiss preview, keep current scan state intact
+function closePreview(){
+  document.getElementById('preview-wrap').classList.remove('show');
+  updateLastBtn();
+}
+
+// "New Scan" — dismiss preview AND reset scan so the ring starts fresh
+function newScan(){
   document.getElementById('preview-wrap').classList.remove('show');
   capturedBlob=null;
   hasCaptured=false;
   pHHist=[];stableCount=0;
   updateStabRing(0);
+  updateLastBtn();
+}
+
+// "Last" button — re-open the last saved capture without touching scan state
+function showLast(){
+  if(!lastCapturedBlob)return;
+  capturedBlob=lastCapturedBlob;
+  document.getElementById('preview-img').src=URL.createObjectURL(lastCapturedBlob);
+  showPreview(true); // review-only: no New Scan button
+}
+
+// Show/hide the "Last" floating button
+function updateLastBtn(){
+  const visible=!!lastCapturedBlob&&!document.getElementById('preview-wrap').classList.contains('show');
+  document.getElementById('btn-last').classList.toggle('show',visible);
 }
 
 // ── MAIN LOOP ─────────────────────────────────────────────────────────────────
@@ -816,6 +863,7 @@ async function start(){
         hasCaptured=true;
         captureDebug();
       }
+      updateLastBtn();
     }
     requestAnimationFrame(loop);
   }
