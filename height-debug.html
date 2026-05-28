@@ -747,26 +747,41 @@ function draw(res){
     ctx.fillText('FLOOR  str:'+floor.edgeStr,10,floor.floorY-4);
     ctx.restore();
 
-    // TR corner height if corner method succeeded
+    // TR corner height — direct method:
+    //   dist(TR,BR) in screen px IS 297 mm  → derive mm/px right here
+    //   then (floorY - TR.y) × that mm/px = actual height
+    //   No blending, no detection-canvas scale, no intermediate pH.
     if(res&&res.cornerResult){
-      const tr=res.cornerResult.corners.tr;
-      const distPx=floor.floorY-tr.y;
-      if(distPx>10&&res.mmPx>0){
-        const heightCm=(distPx*res.mmPx/10).toFixed(1);
-        const mx=tr.x+28; // x of measurement line
+      const C=res.cornerResult.corners;
 
+      // Paper height in screen px from each side (already in screen coords via toScr)
+      const rightPx=dist(C.tr,C.br);
+      const leftPx =dist(C.tl,C.bl);
+      const paperPxH=(rightPx+leftPx)/2;  // avg both sides = 297 mm reference
+      const mmPxDirect=297/paperPxH;      // mm per screen pixel
+
+      // Store on res so panel + overlay can read it
+      res._paperPxH=+paperPxH.toFixed(1);
+      res._mmPxDirect=+mmPxDirect.toFixed(4);
+
+      const distPx=floor.floorY-C.tr.y;
+      if(distPx>10){
+        const heightCm=(distPx*mmPxDirect/10).toFixed(1);
+        res._trHeightCm=heightCm;
+        res._trDistPx=Math.round(distPx);
+
+        const mx=C.tr.x+28;
         ctx.save();
         // Vertical bracket
         ctx.strokeStyle='rgba(255,210,50,0.9)';ctx.lineWidth=1.5;
-        ctx.beginPath();ctx.moveTo(mx,tr.y);ctx.lineTo(mx,floor.floorY);ctx.stroke();
-        // Tick ends
-        [tr.y,floor.floorY].forEach(ty=>{
+        ctx.beginPath();ctx.moveTo(mx,C.tr.y);ctx.lineTo(mx,floor.floorY);ctx.stroke();
+        [C.tr.y,floor.floorY].forEach(ty=>{
           ctx.beginPath();ctx.moveTo(mx-6,ty);ctx.lineTo(mx+6,ty);ctx.stroke();
         });
-        // Height label (centred on bracket)
-        const midY=(tr.y+floor.floorY)/2;
-        ctx.fillStyle='rgba(0,0,0,0.6)';
-        ctx.fillRect(mx+8,midY-10,72,20);
+        // Height label
+        const midY=(C.tr.y+floor.floorY)/2;
+        ctx.fillStyle='rgba(0,0,0,0.65)';
+        ctx.fillRect(mx+8,midY-11,78,22);
         ctx.fillStyle='#FFD700';ctx.font='bold 13px monospace';
         ctx.textAlign='left';ctx.textBaseline='middle';
         ctx.fillText(heightCm+' cm',mx+12,midY);
@@ -808,21 +823,19 @@ function draw(res){
   }
 
   // ── Floor + TR height panel update ────────────────────────────────────────
-  const fl=lastFloor; // set just before this is called
+  const fl=lastFloor;
   if(fl){
     set('p-floor',Math.round(fl.floorY)+' px  (str '+fl.edgeStr+')','ok');
   } else {
     set('p-floor','not detected','bad');
   }
-  if(fl&&res&&res.cornerResult){
-    const tr=res.cornerResult.corners.tr;
-    const distPx=fl.floorY-tr.y;
-    if(distPx>10&&res.mmPx>0){
-      const hcm=(distPx*res.mmPx/10).toFixed(1);
-      set('p-trheight',hcm+' cm','ok');
-    } else {
-      set('p-trheight','—','dim');
-    }
+  // Direct calculation: paper px height from corners + TR→floor
+  if(res&&res._paperPxH){
+    set('p-ph',res._paperPxH+' px  →  '+res._mmPxDirect+' mm/px','ok');
+    set('p-mmPx','direct (TR-BR avg)','dim');
+  }
+  if(fl&&res&&res._trHeightCm){
+    set('p-trheight',res._trHeightCm+' cm  ('+res._trDistPx+' px)','ok');
   } else {
     set('p-trheight','—','dim');
   }
@@ -859,22 +872,18 @@ function drawCaptureOverlay(c,W,H,res){
     rows.push({text:`160 cm → ${px160}px   170 cm → ${px170}px`,color:'#7ec8e3'});
     rows.push({text:`180 cm → ${px180}px   190 cm → ${px190}px`,color:'#7ec8e3',bold:true});
 
-    // Floor + TR height measurement
+    // Direct floor + TR height measurement
     rows.push({sep:true});
     const fl=lastFloor;
-    if(fl&&res.cornerResult){
-      const tr=res.cornerResult.corners.tr;
-      const distPx=fl.floorY-tr.y;
-      if(distPx>10){
-        const hcm=(distPx*res.mmPx/10).toFixed(1);
-        rows.push({text:`Floor detected  (edge str: ${fl.edgeStr})`,color:'rgba(255,140,0,0.9)',small:true});
-        rows.push({text:`TR corner → floor:  ${hcm} cm  (${Math.round(distPx)} px)`,
+    if(fl&&res._paperPxH){
+      rows.push({text:`Paper: ${res._paperPxH}px = 297mm  →  1px = ${res._mmPxDirect}mm`,
+                 color:'rgba(255,140,0,0.9)',small:true});
+      if(res._trHeightCm){
+        rows.push({text:`TR corner → floor:  ${res._trHeightCm} cm  (${res._trDistPx} px)`,
                    color:'#FFD700',bold:true});
-      } else {
-        rows.push({text:'TR corner below floor line — check framing',color:'#ff6b6b'});
       }
     } else {
-      rows.push({text:`Floor: ${fl?'detected (str '+fl.edgeStr+')':'not detected'}   TR: no corner result`,
+      rows.push({text:`Floor: ${fl?'detected':'not detected'}   Corners: ${res.cornerResult?'ok':'missing'}`,
                  color:'#888',small:true});
     }
   } else {
