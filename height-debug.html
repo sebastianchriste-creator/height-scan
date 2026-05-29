@@ -583,12 +583,21 @@ function detectPaper(g){
   const inner=A?.inner??B?.inner??C?.inner??D?.inner??0;
   const detRatio=A?.detRatio??B?.detRatio??expRatio;
 
+  // ── SANITY GUARD ──────────────────────────────────────────────────────────
+  // If no corners detected AND blended pH is ≥ 82% of the guide rect height,
+  // the brightness/variance/lines methods are measuring the guide region itself
+  // rather than the actual (smaller, more distant) paper.
+  // In this case scale is unreliable — flag it and let the UI warn the user.
+  const phFrac=finalPH/g.h;
+  const phSuspect=!A&&phFrac>0.82;
+
   return{
     pH:finalPH, mmPx, inner, detRatio, expRatio, confidence:finalConf,
     methods:{A:!!A,B:!!B,C:!!C,D:!!D},
     cornerResult:A, lineResult:B, briResult:C, varResult:D,
     diagRatio:A?.diagRatio??null,
     agreed:agreed.map(c=>c.src).join('+'),
+    phFrac:+phFrac.toFixed(2), phSuspect,
   };
 }
 
@@ -695,6 +704,16 @@ function draw(res){
   if(!ok){
     ctx.fillStyle='rgba(255,255,255,0.3)';ctx.font='11px monospace';ctx.textAlign='center';
     ctx.fillText('Place paper inside this box',g.x+g.w/2,g.y+g.h/2);
+  }
+  // "Move closer" warning when blended pH fills guide box (no corners, paper too far)
+  if(res&&res.phSuspect){
+    ctx.save();
+    ctx.fillStyle='rgba(237,100,50,0.92)';
+    ctx.font='bold 13px monospace';ctx.textAlign='center';
+    ctx.fillText('⚠ MOVE CLOSER — corners needed',g.x+g.w/2,g.y+g.h/2-8);
+    ctx.font='11px monospace';ctx.fillStyle='rgba(255,180,150,0.85)';
+    ctx.fillText('blended pH ≈ guide box ('+Math.round(res.phFrac*100)+'%)',g.x+g.w/2,g.y+g.h/2+12);
+    ctx.restore();
   }
 
   if(res){
@@ -880,9 +899,11 @@ function draw(res){
   if(res){
     const rOk=Math.abs(res.detRatio-res.expRatio)/res.expRatio<0.25;
     const dOk=res.diagRatio==null||res.diagRatio>0.85;
-    set('p-status','OK ('+res.agreed+')','ok');
-    set('p-ph',res.pH.toFixed(1)+' px','ok');
-    set('p-mmPx',res.mmPx.toFixed(2)+' mm/px','ok');
+    set('p-status', res.phSuspect ? '⚠ MOVE CLOSER' : 'OK ('+res.agreed+')',
+        res.phSuspect ? 'warn' : 'ok');
+    set('p-ph',res.pH.toFixed(1)+' px'+(res.phSuspect?' ('+Math.round(res.phFrac*100)+'% guide)':''),'ok');
+    set('p-mmPx', res.phSuspect ? '— (blended unreliable)' : res.mmPx.toFixed(2)+' mm/px',
+        res.phSuspect ? 'bad' : 'ok');
     set('p-bri',res.inner+'/255',res.inner>=130?'ok':res.inner>=90?'dim':'bad');
     set('p-ratio',res.detRatio.toFixed(3),rOk?'ok':'warn');
     set('p-exp',res.expRatio.toFixed(3),'dim');
@@ -890,12 +911,10 @@ function draw(res){
     set('p-conf',(res.confidence*100).toFixed(0)+'%',res.confidence>0.3?'ok':res.confidence>0.1?'dim':'bad');
     const A=res.cornerResult,B=res.lineResult;
     const spanH=A?.spanH??B?.spanH??0,spanW=A?.spanW??B?.spanW??0;
-    set('p-span',spanH.toFixed(0)+' × '+spanW.toFixed(0),'dim');
-    // p-ref uses triangulated mmPx when available, blended otherwise
-    const mmPxForRef=res._mmPxTriang||res._mmPxDirect||res.mmPx;
-    const ref=Math.round(1800/mmPxForRef);
-    set('p-ref',ref+' px',ref>200&&ref<2000?'ok':'bad');
-    // Show blended pH in span cell as debug info
+    // p-ref: only show when scale is trustworthy
+    const mmPxForRef=res._mmPxTriang||res._mmPxDirect||(!res.phSuspect&&res.mmPx)||0;
+    const ref=mmPxForRef>0?Math.round(1800/mmPxForRef):0;
+    set('p-ref', res.phSuspect?'— move closer':ref+' px', (!res.phSuspect&&ref>200&&ref<2000)?'ok':'bad');
     set('p-span',spanH.toFixed(0)+' × '+spanW.toFixed(0)+'  [blended pH='+res.pH.toFixed(0)+']','dim');
   } else {
     ['p-ph','p-mmPx','p-bri','p-ratio','p-diag','p-conf','p-span','p-ref']
@@ -964,13 +983,20 @@ function drawCaptureOverlay(c,W,H,res){
     // Separator
     rows.push({sep:true});
 
-    // Scale table using the single chosen mm/px
-    const px160=Math.round(1600/mmPx);
-    const px170=Math.round(1700/mmPx);
-    const px180=Math.round(1800/mmPx);
-    const px190=Math.round(1900/mmPx);
-    rows.push({text:`160 cm → ${px160}px   170 cm → ${px170}px`,color:'#7ec8e3'});
-    rows.push({text:`180 cm → ${px180}px   190 cm → ${px190}px`,color:'#7ec8e3',bold:true});
+    // Scale table — only when scale is trustworthy
+    if(res.phSuspect){
+      rows.push({text:`⚠ MOVE CLOSER — blended pH=${res.pH.toFixed(0)}px is ${Math.round(res.phFrac*100)}% of guide box`,
+                 color:'#ff6b6b',bold:true});
+      rows.push({text:`Scale unreliable without corner detection`,
+                 color:'#ff6b6b',small:true});
+    } else {
+      const px160=Math.round(1600/mmPx);
+      const px170=Math.round(1700/mmPx);
+      const px180=Math.round(1800/mmPx);
+      const px190=Math.round(1900/mmPx);
+      rows.push({text:`160 cm → ${px160}px   170 cm → ${px170}px`,color:'#7ec8e3'});
+      rows.push({text:`180 cm → ${px180}px   190 cm → ${px190}px`,color:'#7ec8e3',bold:true});
+    }
 
     // Floor + TR height
     rows.push({sep:true});
