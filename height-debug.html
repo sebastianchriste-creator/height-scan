@@ -638,30 +638,44 @@ function detectFloor(g){
   for(let si=0;si<N;si++){
     const x0=si*sw, x1=Math.min(x0+sw,PW-1);
 
-    // Row-max |Gy| within this slice only
+    // Per-row: max |Gy| (edge strength) AND net signed Gy (direction).
+    // Wall-to-floor transition: bright wall above → dark carpet below → Gy < 0.
+    // We want the LOWEST row that is both a strong edge AND has that direction.
     const rowE=new Float32Array(PH);
+    const rowNeg=new Float32Array(PH); // net bright→dark signal (positive = wall→floor)
     for(let y=1;y<PH-1;y++){
-      let mx=0;
+      let mx=0,neg=0,pos=0;
       for(let x=x0+1;x<x1-1;x++){
-        const gy=Math.abs((L[(y+1)*PW+x-1]+2*L[(y+1)*PW+x]+L[(y+1)*PW+x+1]
-                          -L[(y-1)*PW+x-1]-2*L[(y-1)*PW+x]-L[(y-1)*PW+x+1])/4);
-        if(gy>mx)mx=gy;
+        const gy=(L[(y+1)*PW+x-1]+2*L[(y+1)*PW+x]+L[(y+1)*PW+x+1]
+                 -L[(y-1)*PW+x-1]-2*L[(y-1)*PW+x]-L[(y-1)*PW+x+1])/4;
+        const agy=Math.abs(gy);
+        if(agy>mx)mx=agy;
+        if(gy<0)neg-=gy; else pos+=gy;
       }
       rowE[y]=mx;
+      rowNeg[y]=neg-pos; // positive = more bright→dark pixels = wall-to-floor direction
     }
-    // 3-tap smooth
+    // 3-tap smooth both arrays
     const rowEs=new Float32Array(PH);
-    for(let y=1;y<PH-2;y++)rowEs[y]=(rowE[y-1]+rowE[y]+rowE[y+1])/3;
+    const rowNegS=new Float32Array(PH);
+    for(let y=1;y<PH-2;y++){
+      rowEs[y]=(rowE[y-1]+rowE[y]+rowE[y+1])/3;
+      rowNegS[y]=(rowNeg[y-1]+rowNeg[y]+rowNeg[y+1])/3;
+    }
 
-    // Find the LOWEST strong edge in this slice (not the strongest).
-    // Threshold is kept low (15% of slice peak, min 2.5) so the carpet-wall
-    // junction — which is weaker than a box top — still clears the bar.
-    // Bottom-up scan then finds it before the stronger-but-higher box edge.
+    // Bottom-up scan: find the LOWEST row that is a strong edge with wall→floor direction.
     let maxE=0;
     for(let y=2;y<PH-2;y++) if(rowEs[y]>maxE) maxE=rowEs[y];
     const sliceThr=Math.max(maxE*0.15, 2.5);
     let bestY=-1,bestE=0;
-    for(let y=PH-3;y>=2;y--){if(rowEs[y]>=sliceThr){bestY=y;bestE=rowEs[y];break;}}
+    // Primary: strong edge + bright→dark direction (the wall-floor junction)
+    for(let y=PH-3;y>=2;y--){
+      if(rowEs[y]>=sliceThr&&rowNegS[y]>0){bestY=y;bestE=rowEs[y];break;}
+    }
+    // Fallback: just the lowest strong edge if no directional edge found
+    if(bestY<0){
+      for(let y=PH-3;y>=2;y--){if(rowEs[y]>=sliceThr){bestY=y;bestE=rowEs[y];break;}}
+    }
     if(bestY>=0&&bestE>1.5){
       // Map back to screen coordinates
       const xScr=((x0+x1)/2/PW)*W;
