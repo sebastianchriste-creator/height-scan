@@ -956,106 +956,64 @@ function draw(res){
 // ── CAPTURE OVERLAY ───────────────────────────────────────────────────────────
 // Draws a data panel onto the captured canvas so the shared image is self-contained.
 function drawCaptureOverlay(c,W,H,res){
-  const PAD=14,LH=22,FONT='bold 13px monospace',SMALL='11px monospace';
+  const PAD=10,LH=17,FONT='bold 11px monospace',SMALL='10px monospace';
   const paper=PAPER[selectedPaper];
 
-  // ── Build text rows ────────────────────────────────────────────────────────
+  // Compact rows — small fonts, dense layout so as little image as possible is covered.
   const rows=[];
   if(res){
-    // Pick ONE mm/px: prefer triangulated corner measurement, fall back to blended
     const hasCorners=!!res._mmPxTriang;
     const mmPx=hasCorners?res._mmPxTriang:res.mmPx;
-    const mmPxSrc=hasCorners?`triag(${res._agreeCount}/3)`:'blended ⚠';
     const methods=Object.entries(res.methods).filter(([,v])=>v).map(([k])=>k).join('+');
+    const dColor=hasCorners?(res._diagAgreePct>=90?'#7ec8e3':res._diagAgreePct>=75?'#EDD94E':'#ff6b6b'):'#EDD94E';
 
-    rows.push({text:`${selectedPaper}  ·  Methods: ${methods||'—'}  ·  Conf: ${(res.confidence*100).toFixed(0)}%`,
-               color:'#4CAF50',bold:true});
-    // Scale line — single source of truth (triangulated)
-    rows.push({text:`Scale: ${hasCorners?res._paperPxH+'px (sides)':'pH='+res.pH.toFixed(0)+'px'} = ${PAPER[selectedPaper].h}mm  →  1px = ${(+mmPx).toFixed(3)}mm  (${mmPxSrc})`,
-               color:hasCorners?'#eee':'#EDD94E'});
-    // Triangulation breakdown: R side / L side / diagonal → single value
+    rows.push({text:`${selectedPaper}  ${methods||'—'}  Conf:${(res.confidence*100).toFixed(0)}%  ·  1px=${(+mmPx).toFixed(3)}mm  (${hasCorners?`triag ${res._agreeCount}/3`:'blended ⚠'})`,
+               color:hasCorners?'#4CAF50':'#EDD94E',bold:true});
     if(hasCorners){
-      const dColor=res._diagAgreePct>=90?'#7ec8e3':res._diagAgreePct>=75?'#EDD94E':'#ff6b6b';
-      rows.push({text:`R:${res._mmPx_right.toFixed(3)}  L:${res._mmPx_left.toFixed(3)}  Diag:${res._mmPx_diag.toFixed(3)}  → ${res._mmPxTriang.toFixed(3)}  ⊿${res._diagAgreePct}%`,
-                 color:dColor,small:true});
-    }
-    rows.push({text:`Ratio: ${res.detRatio.toFixed(3)} (exp ${res.expRatio.toFixed(3)})  Rect: ${res.diagRatio!=null?res.diagRatio.toFixed(3):'n/a'}  Bri: ${res.inner}/255`,
-               color:'#aaa',small:true});
-    // Debug: show blended pH if it differs significantly from triangulated
-    if(hasCorners){
-      const pct=Math.round(Math.abs(res._mmPxTriang-res.mmPx)/res._mmPxTriang*100);
-      if(pct>15)rows.push({text:`⚠ blended mm/px=${res.mmPx.toFixed(3)} differs ${pct}% — blended pH unreliable`,
-                           color:'#ff6b6b',small:true});
-    }
-
-    // Separator
-    rows.push({sep:true});
-
-    // Scale table — only when scale is trustworthy
-    if(res.phSuspect){
-      rows.push({text:`⚠ MOVE CLOSER — blended pH=${res.pH.toFixed(0)}px is ${Math.round(res.phFrac*100)}% of guide box`,
-                 color:'#ff6b6b',bold:true});
-      rows.push({text:`Scale unreliable without corner detection`,
-                 color:'#ff6b6b',small:true});
+      rows.push({text:`R:${res._mmPx_right.toFixed(3)}  L:${res._mmPx_left.toFixed(3)}  Diag:${res._mmPx_diag.toFixed(3)}  →  ${res._mmPxTriang.toFixed(3)}  ⊿${res._diagAgreePct}%  ·  sides:${res._paperPxH}px`,
+                 color:dColor});
     } else {
-      const px160=Math.round(1600/mmPx);
-      const px170=Math.round(1700/mmPx);
-      const px180=Math.round(1800/mmPx);
-      const px190=Math.round(1900/mmPx);
-      rows.push({text:`160 cm → ${px160}px   170 cm → ${px170}px`,color:'#7ec8e3'});
-      rows.push({text:`180 cm → ${px180}px   190 cm → ${px190}px`,color:'#7ec8e3',bold:true});
+      rows.push({text:`pH:${res.pH.toFixed(1)}px  ${res.phSuspect?'⚠ MOVE CLOSER — no corners':''}`,
+                 color:res.phSuspect?'#ff6b6b':'#aaa'});
     }
-
-    // Floor + TR height
+    rows.push({text:`Ratio:${res.detRatio.toFixed(3)} (exp ${res.expRatio.toFixed(3)})  Rect:${res.diagRatio!=null?res.diagRatio.toFixed(3):'n/a'}  Bri:${res.inner}/255`,
+               color:'#666'});
     rows.push({sep:true});
     const fl=lastFloor;
     if(fl&&res._trHeightCm){
-      rows.push({text:`Floor slope: ${fl.slopeDeg}°  str: ${fl.edgeStr}  pts: ${fl.points.length}/8`,
-                 color:'rgba(255,140,0,0.9)',small:true});
-      rows.push({text:`TR corner → floor:  ${res._trHeightCm} cm  (${res._trDistPx} px)`,
+      rows.push({text:`Floor: ${fl.slopeDeg}°  str:${fl.edgeStr}  pts:${fl.points.length}/8`,
+                 color:'rgba(255,140,0,0.9)'});
+      rows.push({text:`TR → floor:  ${res._trHeightCm} cm  (${res._trDistPx} px)`,
                  color:'#FFD700',bold:true});
-      // Calibration row (if user entered actual measurement)
     } else {
-      rows.push({text:`Floor: ${fl?'detected':'not detected'}   Corners: ${res.cornerResult?'ok':'missing'}`,
-                 color:'#888',small:true});
+      rows.push({text:`Floor:${fl?'detected':'—'}  Corners:${res.cornerResult?'ok':'missing'}`,color:'#888'});
     }
   } else {
-    rows.push({text:'NO PAPER DETECTED',color:'#ff6b6b',bold:true});
-    rows.push({text:`Paper type: ${selectedPaper}  (${paper.w} × ${paper.h} mm)`,color:'#aaa'});
+    rows.push({text:'NO PAPER',color:'#ff6b6b',bold:true});
+    rows.push({text:`${selectedPaper}  (${paper.w}×${paper.h}mm)`,color:'#aaa'});
   }
 
-  // ── Measure panel height ───────────────────────────────────────────────────
   let panelH=PAD*2;
-  for(const r of rows)panelH+=r.sep?10:LH;
-
+  for(const r of rows)panelH+=r.sep?7:LH;
   const y0=H-panelH;
 
-  // ── Background ────────────────────────────────────────────────────────────
-  c.fillStyle='rgba(0,0,0,0.88)';
-  c.fillRect(0,y0,W,panelH);
-  // Accent bar top
-  c.fillStyle=res?'#4CAF50':'#ff6b6b';
-  c.fillRect(0,y0,W,3);
+  c.fillStyle='rgba(0,0,0,0.88)';c.fillRect(0,y0,W,panelH);
+  c.fillStyle=res?'#4CAF50':'#ff6b6b';c.fillRect(0,y0,W,3);
 
-  // ── Render rows ────────────────────────────────────────────────────────────
   let ty=y0+PAD;
   for(const r of rows){
     if(r.sep){
-      c.strokeStyle='rgba(255,255,255,0.15)';c.lineWidth=1;
-      c.beginPath();c.moveTo(PAD,ty+4);c.lineTo(W-PAD,ty+4);c.stroke();
-      ty+=10;continue;
+      c.strokeStyle='rgba(255,255,255,0.12)';c.lineWidth=1;
+      c.beginPath();c.moveTo(PAD,ty+3);c.lineTo(W-PAD,ty+3);c.stroke();
+      ty+=7;continue;
     }
-    c.font=r.bold?(r.small?'bold 11px monospace':FONT):(r.small?SMALL:FONT.replace('bold ',''));
-    c.fillStyle=r.color||'#eee';
-    c.textAlign='left';c.textBaseline='top';
+    c.font=r.bold?FONT:SMALL;
+    c.fillStyle=r.color||'#eee';c.textAlign='left';c.textBaseline='top';
     c.fillText(r.text,PAD,ty);
     ty+=LH;
   }
-
-  // ── Watermark ─────────────────────────────────────────────────────────────
-  c.font='10px monospace';c.fillStyle='rgba(255,255,255,0.25)';
-  c.textAlign='right';
-  c.fillText('height-scan · paper-debug',W-PAD,y0+panelH-12);
+  c.font='9px monospace';c.fillStyle='rgba(255,255,255,0.2)';
+  c.textAlign='right';c.fillText('height-scan · debug',W-PAD,y0+panelH-9);
 }
 
 // ── CAPTURE ───────────────────────────────────────────────────────────────────
