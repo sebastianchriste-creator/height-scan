@@ -146,6 +146,7 @@
     <div class="lbl">TR corner → floor</div>
     <div class="val" id="p-trheight">—</div>
   </div>
+
 </div>
 
 <!-- stability ring (auto-capture indicator) -->
@@ -652,10 +653,16 @@ function detectFloor(g){
     const rowEs=new Float32Array(PH);
     for(let y=1;y<PH-2;y++)rowEs[y]=(rowE[y-1]+rowE[y]+rowE[y+1])/3;
 
-    // Strongest row in this slice
-    let maxE=0,bestY=-1;
-    for(let y=2;y<PH-2;y++){if(rowEs[y]>maxE){maxE=rowEs[y];bestY=y;}}
-    if(bestY>=0&&maxE>1.5){
+    // Find the LOWEST strong edge in this slice (not the strongest).
+    // Scanning bottom→top means we find the actual floor before the baseboard top,
+    // since the floor is always below the baseboard. The threshold is 30% of the
+    // slice's peak so both edges qualify, but we stop at the first one from below.
+    let maxE=0;
+    for(let y=2;y<PH-2;y++) if(rowEs[y]>maxE) maxE=rowEs[y];
+    const sliceThr=Math.max(maxE*0.30, 1.5);
+    let bestY=-1,bestE=0;
+    for(let y=PH-3;y>=2;y--){if(rowEs[y]>=sliceThr){bestY=y;bestE=rowEs[y];break;}}
+    if(bestY>=0&&bestE>1.5){
       // Map back to screen coordinates
       const xScr=((x0+x1)/2/PW)*W;
       const yScr=stripTop+(bestY/PH)*stripH;
@@ -943,6 +950,7 @@ function draw(res){
   } else {
     set('p-trheight','—','dim');
   }
+
 }
 
 // ── CAPTURE OVERLAY ───────────────────────────────────────────────────────────
@@ -1006,6 +1014,7 @@ function drawCaptureOverlay(c,W,H,res){
                  color:'rgba(255,140,0,0.9)',small:true});
       rows.push({text:`TR corner → floor:  ${res._trHeightCm} cm  (${res._trDistPx} px)`,
                  color:'#FFD700',bold:true});
+      // Calibration row (if user entered actual measurement)
     } else {
       rows.push({text:`Floor: ${fl?'detected':'not detected'}   Corners: ${res.cornerResult?'ok':'missing'}`,
                  color:'#888',small:true});
