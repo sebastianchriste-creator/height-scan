@@ -614,7 +614,7 @@ function detectFloor(g){
 
   const W=oc.width,H=oc.height;
   const stripTop=Math.round(g.y+g.h)+8;
-  const stripBot=H-panelH()-8;
+  const stripBot=H-8; // extend to full camera frame — floor often falls under the UI panel
   const stripH=stripBot-stripTop;
   if(stripH<30)return null;
 
@@ -654,12 +654,12 @@ function detectFloor(g){
     for(let y=1;y<PH-2;y++)rowEs[y]=(rowE[y-1]+rowE[y]+rowE[y+1])/3;
 
     // Find the LOWEST strong edge in this slice (not the strongest).
-    // Scanning bottom→top means we find the actual floor before the baseboard top,
-    // since the floor is always below the baseboard. The threshold is 30% of the
-    // slice's peak so both edges qualify, but we stop at the first one from below.
+    // Threshold is kept low (15% of slice peak, min 2.5) so the carpet-wall
+    // junction — which is weaker than a box top — still clears the bar.
+    // Bottom-up scan then finds it before the stronger-but-higher box edge.
     let maxE=0;
     for(let y=2;y<PH-2;y++) if(rowEs[y]>maxE) maxE=rowEs[y];
-    const sliceThr=Math.max(maxE*0.30, 1.5);
+    const sliceThr=Math.max(maxE*0.15, 2.5);
     let bestY=-1,bestE=0;
     for(let y=PH-3;y>=2;y--){if(rowEs[y]>=sliceThr){bestY=y;bestE=rowEs[y];break;}}
     if(bestY>=0&&bestE>1.5){
@@ -672,16 +672,24 @@ function detectFloor(g){
 
   if(points.length<2)return null;
 
+  // Outlier rejection: drop slice points more than 25px from the median Y.
+  // Handles mixed scenes where some slices correctly hit the floor and others
+  // land on box tops or furniture — the majority vote via median wins.
+  const ys=points.map(p=>p.y).slice().sort((a,b)=>a-b);
+  const medY=ys[Math.floor(ys.length/2)];
+  const inliers=points.filter(p=>Math.abs(p.y-medY)<=25);
+  const pts=inliers.length>=2?inliers:points; // fall back if too few inliers
+
   // Linear regression: y = m*x + b (floor line across screen)
-  const n=points.length;
+  const n=pts.length;
   let sx=0,sy=0,sxy=0,sx2=0;
-  for(const p of points){sx+=p.x;sy+=p.y;sxy+=p.x*p.y;sx2+=p.x*p.x;}
+  for(const p of pts){sx+=p.x;sy+=p.y;sxy+=p.x*p.y;sx2+=p.x*p.x;}
   const denom=n*sx2-sx*sx;
   let m=0,b=sy/n;
   if(Math.abs(denom)>0.001){m=(n*sxy-sx*sy)/denom;b=(sy-m*sx)/n;}
 
   const floorAt=x=>m*x+b;
-  const avgE=points.reduce((s,p)=>s+p.e,0)/points.length;
+  const avgE=pts.reduce((s,p)=>s+p.e,0)/pts.length;
   const slopeDeg=(Math.atan(m)*180/Math.PI).toFixed(1);
 
   return{floorAt,m,b,points,edgeStr:+avgE.toFixed(1),slopeDeg,stripTop,stripBot};
