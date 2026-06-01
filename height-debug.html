@@ -1068,6 +1068,42 @@ function captureDebug(){
   if(cp)c.drawImage(video,cp.sx,cp.sy,cp.sw,cp.sh,0,0,cap.width,cap.height);
   c.drawImage(oc,0,0);
   drawCaptureOverlay(c,cap.width,cap.height,lastRes);
+  // Redraw floor detection ON TOP of the text overlay so it's visible in the saved image.
+  // In the live view the canvas and HTML panel are separate layers; in the capture they
+  // flatten, so the opaque text panel buries the floor line unless we paint it again here.
+  if(lastFloor){
+    const fl=lastFloor;
+    c.save();
+    c.strokeStyle='rgba(255,140,0,0.9)';c.lineWidth=2;c.setLineDash([10,7]);
+    c.beginPath();c.moveTo(0,fl.floorAt(0));c.lineTo(cap.width,fl.floorAt(cap.width));c.stroke();
+    c.setLineDash([]);
+    fl.points.forEach(p=>{
+      c.beginPath();c.arc(p.x,p.y,5,0,Math.PI*2);
+      c.fillStyle='rgba(255,140,0,0.9)';c.fill();
+      c.strokeStyle='#fff';c.lineWidth=1.2;c.stroke();
+    });
+    const lblY=fl.floorAt(10);
+    c.fillStyle='rgba(0,0,0,0.6)';c.fillRect(6,lblY-18,240,18);
+    c.fillStyle='rgba(255,140,0,1)';c.font='bold 10px monospace';
+    c.textAlign='left';c.textBaseline='bottom';
+    c.fillText('FLOOR  '+fl.slopeDeg+'°  str:'+fl.edgeStr+'  pts:'+fl.points.length+'/8',10,lblY-2);
+    c.restore();
+  }
+  if(lastFloor&&lastRes&&lastRes._trHeightCm&&lastRes.cornerResult){
+    const C=lastRes.cornerResult.corners,fl=lastFloor;
+    const mx=C.tr.x+28,flY=fl.floorAt(C.tr.x);
+    c.save();
+    c.strokeStyle='rgba(255,210,50,0.9)';c.lineWidth=1.5;
+    c.beginPath();c.moveTo(mx,C.tr.y);c.lineTo(mx,flY);c.stroke();
+    [C.tr.y,flY].forEach(ty=>{c.beginPath();c.moveTo(mx-6,ty);c.lineTo(mx+6,ty);c.stroke();});
+    const midY=(C.tr.y+flY)/2;
+    c.fillStyle='rgba(0,0,0,0.7)';c.fillRect(mx+8,midY-11,82,22);
+    c.fillStyle='#FFD700';c.font='bold 13px monospace';
+    c.textAlign='left';c.textBaseline='middle';
+    c.fillText(lastRes._trHeightCm+' cm',mx+12,midY);
+    c.restore();
+  }
+
   cap.toBlob(blob=>{
     capturedBlob=blob;
     lastCapturedBlob=blob; // persist across retakes for "Last" button
