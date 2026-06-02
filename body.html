@@ -1,0 +1,717 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <meta name="mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <title>Body Scan</title>
+  <style>
+    *{margin:0;padding:0;box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+    html,body{width:100%;height:100%;background:#0d0d0d;overflow:hidden;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;color:#eee}
+
+    /* ── SCREENS ── */
+    .screen{position:absolute;inset:0;display:none;flex-direction:column;align-items:center;justify-content:center}
+    .screen.active{display:flex}
+
+    /* ── INTRO SCREEN ── */
+    #screen-intro{background:linear-gradient(160deg,#0d0d0d 0%,#1a1a1a 100%);padding:32px 24px;gap:0}
+    .intro-logo{font-size:13px;font-weight:700;letter-spacing:.18em;color:rgba(255,255,255,0.3);text-transform:uppercase;margin-bottom:40px}
+    .intro-title{font-size:32px;font-weight:700;text-align:center;line-height:1.15;margin-bottom:10px}
+    .intro-title span{color:#7ec8e3}
+    .intro-sub{font-size:15px;color:rgba(255,255,255,0.45);text-align:center;max-width:280px;line-height:1.55;margin-bottom:48px}
+
+    .height-card{width:100%;max-width:340px;background:rgba(255,255,255,0.05);border:1px solid rgba(255,255,255,0.1);border-radius:20px;padding:24px;margin-bottom:28px}
+    .height-card-label{font-size:11px;font-weight:700;letter-spacing:.12em;text-transform:uppercase;color:rgba(255,255,255,0.4);margin-bottom:16px}
+
+    .unit-toggle{display:flex;gap:6px;margin-bottom:20px}
+    .unit-btn{flex:1;padding:8px;border-radius:10px;border:1px solid rgba(255,255,255,0.15);background:transparent;color:rgba(255,255,255,0.4);font:600 13px -apple-system,sans-serif;cursor:pointer;transition:all .2s}
+    .unit-btn.active{background:rgba(126,200,227,0.15);border-color:#7ec8e3;color:#7ec8e3}
+
+    /* cm input */
+    .cm-input-wrap{display:flex;align-items:baseline;gap:10px;justify-content:center}
+    .cm-input{background:transparent;border:none;border-bottom:2px solid rgba(255,255,255,0.2);color:#fff;font-size:52px;font-weight:300;width:140px;text-align:center;outline:none;padding:4px 0;transition:border-color .2s}
+    .cm-input:focus{border-bottom-color:#7ec8e3}
+    .cm-unit-lbl{font-size:20px;color:rgba(255,255,255,0.4);font-weight:300}
+
+    /* ft/in input */
+    .ftin-wrap{display:flex;align-items:baseline;gap:6px;justify-content:center}
+    .ftin-input{background:transparent;border:none;border-bottom:2px solid rgba(255,255,255,0.2);color:#fff;font-size:42px;font-weight:300;text-align:center;outline:none;padding:4px 0;transition:border-color .2s}
+    .ftin-input:focus{border-bottom-color:#7ec8e3}
+    .ftin-input.ft{width:70px}
+    .ftin-input.inch{width:80px}
+    .ftin-lbl{font-size:16px;color:rgba(255,255,255,0.4);font-weight:300}
+
+    /* tip */
+    .height-tip{font-size:11px;color:rgba(255,255,255,0.3);text-align:center;margin-top:14px}
+
+    .btn-primary{
+      width:100%;max-width:340px;padding:17px;border-radius:16px;border:none;
+      background:linear-gradient(135deg,#7ec8e3,#5ba8c4);
+      color:#0d0d0d;font-size:16px;font-weight:700;letter-spacing:.02em;cursor:pointer;
+      transition:opacity .2s,transform .1s;
+    }
+    .btn-primary:active{transform:scale(0.98);opacity:.9}
+    .btn-primary:disabled{opacity:.35;cursor:default}
+
+    /* ── SCAN SCREEN ── */
+    #screen-scan{background:#000;padding:0}
+    #video{position:absolute;inset:0;width:100%;height:100%;object-fit:cover}
+    #oc{position:absolute;inset:0;width:100%;height:100%}
+
+    /* Instructions bar */
+    #instr{
+      position:absolute;top:0;left:0;right:0;
+      padding:max(16px,env(safe-area-inset-top)) 16px 14px;
+      background:linear-gradient(to bottom,rgba(0,0,0,0.7) 0%,transparent 100%);
+      text-align:center;
+    }
+    #instr-text{font-size:14px;font-weight:600;color:#fff;opacity:0.9}
+    #instr-sub{font-size:12px;color:rgba(255,255,255,0.5);margin-top:3px}
+
+    /* Stability ring */
+    #stab-ring{
+      position:absolute;bottom:0;left:50%;transform:translateX(-50%);
+      width:72px;height:72px;
+    }
+    #stab-ring svg{width:100%;height:100%;transform:rotate(-90deg)}
+    #stab-track{fill:none;stroke:rgba(255,255,255,0.1);stroke-width:5}
+    #stab-fill{fill:none;stroke:#7ec8e3;stroke-width:5;stroke-linecap:round;
+               stroke-dasharray:201;stroke-dashoffset:201;transition:stroke-dashoffset .12s linear}
+    #stab-icon{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;font-size:26px}
+
+    /* Back button */
+    #btn-back{
+      position:absolute;top:max(16px,env(safe-area-inset-top));left:14px;
+      background:rgba(0,0,0,0.55);border:1px solid rgba(255,255,255,0.2);
+      color:#fff;font-size:12px;font-weight:600;padding:7px 14px;border-radius:20px;cursor:pointer;
+    }
+
+    /* Framing error */
+    #framing-err{
+      position:absolute;bottom:0;left:0;right:0;
+      padding:12px 20px;background:rgba(220,60,40,0.9);
+      font-size:13px;font-weight:600;text-align:center;color:#fff;
+      display:none;
+    }
+    #framing-err.show{display:block}
+
+    /* ── RESULTS SCREEN ── */
+    #screen-results{background:#0d0d0d;flex-direction:column;align-items:stretch;justify-content:flex-start;overflow-y:auto}
+    .results-header{padding:max(24px,env(safe-area-inset-top)) 20px 20px;background:linear-gradient(to bottom,#1a1a1a,#0d0d0d)}
+    .results-title{font-size:22px;font-weight:700;margin-bottom:4px}
+    .results-sub{font-size:13px;color:rgba(255,255,255,0.4)}
+
+    .results-preview{width:100%;height:260px;object-fit:cover;display:block}
+    .results-preview-wrap{position:relative;width:100%;height:260px;overflow:hidden}
+    .results-preview-wrap canvas{width:100%;height:100%}
+
+    .meas-grid{padding:20px;display:grid;grid-template-columns:1fr 1fr;gap:12px}
+    .meas-card{background:rgba(255,255,255,0.05);border:1px solid rgba(255,255,255,0.08);border-radius:14px;padding:16px}
+    .meas-card.highlight{background:rgba(126,200,227,0.1);border-color:rgba(126,200,227,0.3)}
+    .meas-card.full{grid-column:span 2}
+    .meas-lbl{font-size:11px;font-weight:600;letter-spacing:.08em;text-transform:uppercase;color:rgba(255,255,255,0.4);margin-bottom:6px}
+    .meas-val{font-size:26px;font-weight:700;color:#fff}
+    .meas-val span{font-size:14px;font-weight:400;color:rgba(255,255,255,0.5);margin-left:2px}
+    .meas-confidence{font-size:10px;color:rgba(255,255,255,0.3);margin-top:4px}
+
+    .results-actions{padding:16px 20px max(24px,env(safe-area-inset-bottom));display:flex;gap:10px}
+    .btn-secondary{
+      flex:1;padding:14px;border-radius:14px;
+      background:rgba(255,255,255,0.08);border:1px solid rgba(255,255,255,0.15);
+      color:#fff;font-size:14px;font-weight:600;cursor:pointer;
+    }
+    .btn-share{
+      flex:1;padding:14px;border-radius:14px;border:none;
+      background:linear-gradient(135deg,#7ec8e3,#5ba8c4);
+      color:#0d0d0d;font-size:14px;font-weight:700;cursor:pointer;
+    }
+
+    /* note about confidence */
+    .results-note{padding:0 20px 16px;font-size:11px;color:rgba(255,255,255,0.25);line-height:1.5;text-align:center}
+  </style>
+</head>
+<body>
+
+<!-- ── SCREEN 1: HEIGHT INPUT ── -->
+<div id="screen-intro" class="screen active">
+  <div class="intro-logo">Body Scan</div>
+  <h1 class="intro-title">Your body,<br>your <span>measurements</span></h1>
+  <p class="intro-sub">Enter your height and we'll calculate everything else from your photo.</p>
+
+  <div class="height-card">
+    <div class="height-card-label">Your height</div>
+    <div class="unit-toggle">
+      <button class="unit-btn active" id="btn-cm" onclick="setUnit('cm')">cm</button>
+      <button class="unit-btn" id="btn-ftin" onclick="setUnit('ftin')">ft / in</button>
+    </div>
+
+    <div id="cm-wrap" class="cm-input-wrap">
+      <input class="cm-input" id="cm-val" type="number" inputmode="numeric" min="100" max="250" placeholder="175" value="">
+      <span class="cm-unit-lbl">cm</span>
+    </div>
+
+    <div id="ftin-wrap" class="ftin-wrap" style="display:none">
+      <input class="ftin-input ft" id="ft-val" type="number" inputmode="numeric" min="3" max="8" placeholder="5">
+      <span class="ftin-lbl">ft</span>
+      <input class="ftin-input inch" id="in-val" type="number" inputmode="numeric" min="0" max="11" placeholder="10">
+      <span class="ftin-lbl">in</span>
+    </div>
+
+    <p class="height-tip">Used only as a reference scale — not stored.</p>
+  </div>
+
+  <button class="btn-primary" id="btn-start" onclick="startScan()" disabled>
+    Scan My Body
+  </button>
+</div>
+
+<!-- ── SCREEN 2: SCAN ── -->
+<div id="screen-scan" class="screen">
+  <video id="video" autoplay playsinline muted></video>
+  <canvas id="oc"></canvas>
+
+  <div id="instr">
+    <div id="instr-text">Stand 2–3 m from the camera</div>
+    <div id="instr-sub" id="instr-sub">Show your full body head to toe</div>
+  </div>
+
+  <button id="btn-back" onclick="goBack()">← Back</button>
+
+  <div id="stab-ring">
+    <svg viewBox="0 0 72 72">
+      <circle id="stab-track" cx="36" cy="36" r="32"/>
+      <circle id="stab-fill"  cx="36" cy="36" r="32"/>
+    </svg>
+    <div id="stab-icon">🧍</div>
+  </div>
+
+  <div id="framing-err"></div>
+</div>
+
+<!-- ── SCREEN 3: RESULTS ── -->
+<div id="screen-results" class="screen">
+  <div class="results-header">
+    <div class="results-title">Your Measurements</div>
+    <div class="results-sub" id="res-sub">Based on your height</div>
+  </div>
+
+  <div class="results-preview-wrap">
+    <canvas id="preview-canvas"></canvas>
+  </div>
+
+  <div class="meas-grid" id="meas-grid"></div>
+
+  <p class="results-note">Measurements are estimates from a 2D photo. Accuracy improves when standing straight, facing the camera, arms slightly away from body.</p>
+
+  <div class="results-actions">
+    <button class="btn-secondary" onclick="rescan()">Rescan</button>
+    <button class="btn-share" onclick="shareResults()">Save / Share</button>
+  </div>
+</div>
+
+<script>
+// ── POSE DETECTION (TensorFlow.js / MoveNet) ──────────────────────────────────
+let detector=null, latestPose=null, isDetecting=false;
+
+async function loadDetector(){
+  await tf.ready();
+  detector=await poseDetection.createDetector(
+    poseDetection.SupportedModels.MoveNet,
+    {modelType:poseDetection.movenet.modelType.SINGLEPOSE_LIGHTNING}
+  );
+}
+
+const KP={
+  NOSE:0,L_EYE:1,R_EYE:2,L_EAR:3,R_EAR:4,
+  L_SHOULDER:5,R_SHOULDER:6,L_ELBOW:7,R_ELBOW:8,
+  L_WRIST:9,R_WRIST:10,L_HIP:11,R_HIP:12,
+  L_KNEE:13,R_KNEE:14,L_ANKLE:15,R_ANKLE:16
+};
+const MIN_SCORE=0.3;
+
+async function runPose(){
+  if(isDetecting||!detector||video.readyState<2)return;
+  isDetecting=true;
+  try{
+    const p=await detector.estimatePoses(video,{flipHorizontal:false});
+    latestPose=p.length>0?p[0]:null;
+  }catch(_){}
+  isDetecting=false;
+}
+
+// ── STATE ─────────────────────────────────────────────────────────────────────
+let knownHeightCm=0;
+let currentUnit='cm';
+let rafId=null;
+let stableCount=0;
+let heightHist=[];
+const STABLE_FRAMES=22, STABLE_TOL_CM=2.5;
+let hasAutoCaptured=false;
+let lastMeas=null;
+let capturedImageBlob=null;
+
+const video=document.getElementById('video');
+const oc=document.getElementById('oc');
+const ctx=oc.getContext('2d');
+
+// ── HEIGHT INPUT ──────────────────────────────────────────────────────────────
+function setUnit(u){
+  currentUnit=u;
+  document.getElementById('btn-cm').classList.toggle('active',u==='cm');
+  document.getElementById('btn-ftin').classList.toggle('active',u==='ftin');
+  document.getElementById('cm-wrap').style.display=u==='cm'?'flex':'none';
+  document.getElementById('ftin-wrap').style.display=u==='ftin'?'flex':'none';
+  validateHeight();
+}
+
+function getHeightCm(){
+  if(currentUnit==='cm'){
+    const v=parseFloat(document.getElementById('cm-val').value);
+    return isNaN(v)?0:v;
+  } else {
+    const ft=parseFloat(document.getElementById('ft-val').value)||0;
+    const inch=parseFloat(document.getElementById('in-val').value)||0;
+    return Math.round((ft*12+inch)*2.54);
+  }
+}
+
+function validateHeight(){
+  const h=getHeightCm();
+  const ok=h>=100&&h<=250;
+  document.getElementById('btn-start').disabled=!ok;
+}
+
+['cm-val','ft-val','in-val'].forEach(id=>{
+  const el=document.getElementById(id);
+  if(el)el.addEventListener('input',validateHeight);
+});
+
+// ── NAVIGATION ────────────────────────────────────────────────────────────────
+function show(screenId){
+  document.querySelectorAll('.screen').forEach(s=>s.classList.remove('active'));
+  document.getElementById(screenId).classList.add('active');
+}
+
+function goBack(){
+  stopScan();
+  show('screen-intro');
+}
+
+function rescan(){
+  show('screen-intro');
+}
+
+// ── START SCAN ────────────────────────────────────────────────────────────────
+async function startScan(){
+  knownHeightCm=getHeightCm();
+  if(knownHeightCm<100||knownHeightCm>250)return;
+
+  show('screen-scan');
+
+  // Camera
+  try{
+    const stream=await navigator.mediaDevices.getUserMedia({
+      video:{facingMode:'environment',width:{ideal:1920},height:{ideal:1080}},
+      audio:false
+    });
+    video.srcObject=stream;
+    await video.play();
+  }catch(e){
+    alert('Camera access needed: '+e.message);
+    show('screen-intro');
+    return;
+  }
+
+  // Resize canvas to window
+  oc.width=window.innerWidth;
+  oc.height=window.innerHeight;
+
+  // Stab ring position — just above bottom safe area
+  positionStabRing();
+
+  // Load model if needed
+  if(!detector){
+    document.getElementById('instr-text').textContent='Loading pose model…';
+    await loadDetector();
+  }
+
+  stableCount=0;heightHist=[];hasAutoCaptured=false;lastMeas=null;
+  startLoop();
+}
+
+function positionStabRing(){
+  const ring=document.getElementById('stab-ring');
+  const safeBot=parseInt(getComputedStyle(document.documentElement).getPropertyValue('--sat'))||0;
+  ring.style.bottom=(safeBot+24)+'px';
+}
+
+function stopScan(){
+  if(rafId){cancelAnimationFrame(rafId);rafId=null;}
+  if(video.srcObject){video.srcObject.getTracks().forEach(t=>t.stop());video.srcObject=null;}
+  latestPose=null;
+}
+
+// ── CROP HELPER ───────────────────────────────────────────────────────────────
+function getCrop(){
+  const vw=video.videoWidth,vh=video.videoHeight,dw=oc.width,dh=oc.height;
+  if(!vw||!vh)return null;
+  if(vw/vh>dw/dh){const s=dh/vh;return{sx:(vw-dw/s)/2,sy:0,sw:dw/s,sh:vh,scale:s};}
+  const s=dw/vw;return{sx:0,sy:(vh-dh/s)/2,sw:vw,sh:dh/s,scale:s};
+}
+// Convert video coords → screen coords
+function v2s(vx,vy,cp){return{x:(vx-cp.sx)*cp.scale,y:(vy-cp.sy)*cp.scale};}
+
+// ── MEASUREMENT CALCULATION ───────────────────────────────────────────────────
+function calcMeas(pose, heightCm){
+  if(!pose||heightCm<100)return null;
+  const cp=getCrop();if(!cp)return null;
+  const kps=pose.keypoints;
+
+  const nose=kps[KP.NOSE];
+  if(!nose||nose.score<MIN_SCORE)return null;
+
+  // ── CROWN & FLOOR ESTIMATION ──
+  // Use ankles if visible, else extrapolate from knees
+  const la=kps[KP.L_ANKLE],ra=kps[KP.R_ANKLE];
+  const lk=kps[KP.L_KNEE], rk=kps[KP.R_KNEE];
+  const ANKLE_MIN=0.35;
+  let ankleVY=null;
+  const laOK=la?.score>ANKLE_MIN,raOK=ra?.score>ANKLE_MIN;
+  if(laOK&&raOK)ankleVY=(la.y+ra.y)/2;
+  else if(laOK)ankleVY=la.y;
+  else if(raOK)ankleVY=ra.y;
+  else{
+    const lkOK=lk?.score>MIN_SCORE,rkOK=rk?.score>MIN_SCORE;
+    if(!lkOK&&!rkOK)return null;
+    const kneeVY=lkOK&&rkOK?(lk.y+rk.y)/2:(lkOK?lk.y:rk.y);
+    ankleVY=nose.y+(kneeVY-nose.y)*(87/66);
+  }
+
+  const a2n=ankleVY-nose.y;
+  if(a2n<40)return null;
+
+  // Crown is ~10.3% of body height above nose; floor is ~4.6% below ankle
+  const crownVY=nose.y-a2n*0.103;
+  const floorVY=ankleVY+a2n*0.046;
+  const crownS=v2s(nose.x,crownVY,cp);
+  const floorS=v2s(nose.x,floorVY,cp);
+  const bodyPx=floorS.y-crownS.y;
+  if(bodyPx<80)return null;
+
+  // mm per screen-pixel, derived from known height
+  const mmPx=(heightCm*10)/bodyPx;
+
+  function kpS(idx){
+    const k=kps[idx];
+    if(!k||k.score<MIN_SCORE)return null;
+    return v2s(k.x,k.y,cp);
+  }
+  function distS(a,b){
+    if(!a||!b)return null;
+    return Math.sqrt((a.x-b.x)**2+(a.y-b.y)**2);
+  }
+  function pxToCm(px){return px!=null?+(px*mmPx/10).toFixed(1):null;}
+
+  const ls=kpS(KP.L_SHOULDER),rs=kpS(KP.R_SHOULDER);
+  const lh=kpS(KP.L_HIP),      rh=kpS(KP.R_HIP);
+  const lw=kpS(KP.L_WRIST),    rw=kpS(KP.R_WRIST);
+  const le_=kpS(KP.L_ELBOW),   re_=kpS(KP.R_ELBOW);
+  const la_=kpS(KP.L_ANKLE)||{x:v2s(nose.x,ankleVY,cp).x,y:v2s(nose.x,ankleVY,cp).y};
+  const ra_=kpS(KP.R_ANKLE)||la_;
+
+  // Shoulder width
+  const shoulderCm=pxToCm(distS(ls,rs));
+
+  // Hip width
+  const hipCm=pxToCm(distS(lh,rh));
+
+  // Torso: mid-shoulder to mid-hip
+  let torsoCm=null;
+  if(ls&&rs&&lh&&rh){
+    const midSh={x:(ls.x+rs.x)/2,y:(ls.y+rs.y)/2};
+    const midHip={x:(lh.x+rh.x)/2,y:(lh.y+rh.y)/2};
+    torsoCm=pxToCm(distS(midSh,midHip));
+  }
+
+  // Inseam: mid-hip to mid-ankle
+  let inseamCm=null;
+  if(lh&&rh){
+    const midHip={x:(lh.x+rh.x)/2,y:(lh.y+rh.y)/2};
+    const midAnkle={x:(la_.x+ra_.x)/2,y:(la_.y+ra_.y)/2};
+    inseamCm=pxToCm(distS(midHip,midAnkle));
+  }
+
+  // Arm length: shoulder→elbow→wrist (left preferred, fallback right)
+  let armCm=null;
+  if(ls&&le_&&lw){
+    armCm=pxToCm((distS(ls,le_)||0)+(distS(le_,lw)||0));
+  } else if(rs&&re_&&rw){
+    armCm=pxToCm((distS(rs,re_)||0)+(distS(re_,rw)||0));
+  }
+
+  // Confidence: based on keypoint scores and body proportion sanity
+  const kpScores=[kps[KP.L_SHOULDER],kps[KP.R_SHOULDER],kps[KP.L_HIP],kps[KP.R_HIP]]
+    .filter(Boolean).map(k=>k.score);
+  const avgKpScore=kpScores.length?kpScores.reduce((a,b)=>a+b,0)/kpScores.length:0;
+
+  return{
+    heightCm,mmPx:+mmPx.toFixed(3),bodyPx:Math.round(bodyPx),
+    shoulderCm,hipCm,torsoCm,inseamCm,armCm,
+    confidence:+avgKpScore.toFixed(2),
+    crownSY:crownS.y,floorSY:floorS.y,noseSX:crownS.x,
+    kps:kps.map(k=>k?v2s(k.x,k.y,cp):null),
+    kpsRaw:kps
+  };
+}
+
+// ── FRAMING CHECK ─────────────────────────────────────────────────────────────
+function checkFraming(pose,cp){
+  if(!pose||!cp)return'Position yourself in front of the camera';
+  const kps=pose.keypoints;
+  const nose=kps[KP.NOSE];
+  if(!nose||nose.score<MIN_SCORE)return'Face the camera — head not detected';
+  const la=kps[KP.L_ANKLE],ra=kps[KP.R_ANKLE];
+  const lk=kps[KP.L_KNEE],rk=kps[KP.R_KNEE];
+  const ankleSeen=(la?.score>0.35)||(ra?.score>0.35);
+  const kneeSeen=(lk?.score>MIN_SCORE)||(rk?.score>MIN_SCORE);
+  if(!ankleSeen&&!kneeSeen)return'Move back — show full body';
+  return null;
+}
+
+// ── STABILITY TRACKING ────────────────────────────────────────────────────────
+function trackStability(heightCm){
+  if(heightCm==null){heightHist=[];stableCount=0;return 0;}
+  heightHist.push(heightCm);if(heightHist.length>40)heightHist.shift();
+  if(heightHist.length<5)return 0;
+  const mean=heightHist.reduce((a,b)=>a+b,0)/heightHist.length;
+  const std=Math.sqrt(heightHist.map(v=>(v-mean)**2).reduce((a,b)=>a+b,0)/heightHist.length);
+  const stable=std<STABLE_TOL_CM;
+  stableCount=stable?Math.min(stableCount+1,STABLE_FRAMES):Math.max(stableCount-2,0);
+  return stableCount/STABLE_FRAMES;
+}
+
+function updateStabRing(ratio){
+  const circ=201; // 2π×32
+  document.getElementById('stab-fill').style.strokeDashoffset=(circ*(1-ratio)).toFixed(1);
+  document.getElementById('stab-fill').style.stroke=ratio>=1?'#fff':'#7ec8e3';
+  document.getElementById('stab-icon').textContent=ratio>=1?'✓':'🧍';
+}
+
+// ── SKELETON DRAWING ──────────────────────────────────────────────────────────
+const SKELETON_PAIRS=[
+  [KP.NOSE,KP.L_EYE],[KP.NOSE,KP.R_EYE],
+  [KP.L_EYE,KP.L_EAR],[KP.R_EYE,KP.R_EAR],
+  [KP.L_SHOULDER,KP.R_SHOULDER],
+  [KP.L_SHOULDER,KP.L_ELBOW],[KP.L_ELBOW,KP.L_WRIST],
+  [KP.R_SHOULDER,KP.R_ELBOW],[KP.R_ELBOW,KP.R_WRIST],
+  [KP.L_SHOULDER,KP.L_HIP],[KP.R_SHOULDER,KP.R_HIP],
+  [KP.L_HIP,KP.R_HIP],
+  [KP.L_HIP,KP.L_KNEE],[KP.L_KNEE,KP.L_ANKLE],
+  [KP.R_HIP,KP.R_KNEE],[KP.R_KNEE,KP.R_ANKLE],
+];
+
+function drawSkeleton(pose,cp,c=ctx){
+  const kps=pose.keypoints;
+  c.save();
+  c.strokeStyle='rgba(126,200,227,0.75)';c.lineWidth=2;c.lineCap='round';
+  for(const[a,b]of SKELETON_PAIRS){
+    const ka=kps[a],kb=kps[b];
+    if(!ka||!kb||ka.score<MIN_SCORE||kb.score<MIN_SCORE)continue;
+    const sa=v2s(ka.x,ka.y,cp),sb=v2s(kb.x,kb.y,cp);
+    c.beginPath();c.moveTo(sa.x,sa.y);c.lineTo(sb.x,sb.y);c.stroke();
+  }
+  c.fillStyle='rgba(126,200,227,0.9)';
+  for(const k of kps){
+    if(!k||k.score<MIN_SCORE)continue;
+    const s=v2s(k.x,k.y,cp);
+    c.beginPath();c.arc(s.x,s.y,4,0,Math.PI*2);c.fill();
+  }
+  c.restore();
+}
+
+// ── MEASUREMENT OVERLAY DRAWING ───────────────────────────────────────────────
+function drawMeasOverlay(meas,c=ctx){
+  if(!meas)return;
+  c.save();
+
+  // Full-body height bracket on the right
+  const bx=meas.noseSX+60;
+  c.strokeStyle='rgba(255,220,50,0.9)';c.lineWidth=1.5;
+  c.beginPath();c.moveTo(bx,meas.crownSY);c.lineTo(bx,meas.floorSY);c.stroke();
+  [meas.crownSY,meas.floorSY].forEach(ty=>{
+    c.beginPath();c.moveTo(bx-6,ty);c.lineTo(bx+6,ty);c.stroke();
+  });
+  const midY=(meas.crownSY+meas.floorSY)/2;
+  c.fillStyle='rgba(0,0,0,0.65)';c.fillRect(bx+10,midY-12,76,24);
+  c.fillStyle='#FFD700';c.font='bold 14px monospace';
+  c.textAlign='left';c.textBaseline='middle';
+  c.fillText(meas.heightCm+' cm',bx+14,midY);
+
+  c.restore();
+}
+
+// ── INSTRUCTIONS UPDATE ───────────────────────────────────────────────────────
+function updateInstr(framingErr,meas,stabRatio){
+  const t=document.getElementById('instr-text');
+  const s=document.getElementById('instr-sub');
+  if(framingErr){
+    t.textContent=framingErr;t.style.color='#ff8a80';
+    s.textContent='';
+  } else if(!meas){
+    t.textContent='Detecting pose…';t.style.color='rgba(255,255,255,0.9)';
+    s.textContent='Stand facing the camera';
+  } else if(stabRatio<0.5){
+    t.textContent='Hold still';t.style.color='rgba(255,255,255,0.9)';
+    s.textContent='Keep arms slightly away from body';
+  } else if(stabRatio<1.0){
+    t.textContent='Almost there…';t.style.color='#7ec8e3';
+    s.textContent='Don\'t move';
+  } else {
+    t.textContent='Capturing…';t.style.color='#4CAF50';
+    s.textContent='';
+  }
+}
+
+// ── MAIN LOOP ─────────────────────────────────────────────────────────────────
+function startLoop(){
+  function loop(){
+    rafId=requestAnimationFrame(loop);
+    if(!document.getElementById('screen-scan').classList.contains('active'))return;
+    if(video.readyState<2)return;
+
+    oc.width=window.innerWidth;oc.height=window.innerHeight;
+    ctx.clearRect(0,0,oc.width,oc.height);
+
+    const cp=getCrop();if(!cp)return;
+
+    // Run pose every other frame
+    if(typeof loop._f==='undefined')loop._f=0;
+    loop._f++;
+    if(loop._f%2===0)runPose();
+
+    const framingErr=checkFraming(latestPose,cp);
+    const meas=framingErr?null:calcMeas(latestPose,knownHeightCm);
+    const stabRatio=trackStability(meas?.heightCm||null);
+
+    if(latestPose&&cp)drawSkeleton(latestPose,cp);
+    if(meas)drawMeasOverlay(meas);
+
+    updateStabRing(stabRatio);
+    updateInstr(framingErr,meas,stabRatio);
+
+    const fe=document.getElementById('framing-err');
+    fe.textContent=framingErr||'';fe.classList.toggle('show',!!framingErr);
+
+    if(!hasAutoCaptured&&meas&&!framingErr&&stabRatio>=1.0){
+      hasAutoCaptured=true;
+      lastMeas={...meas};
+      doCapture(meas,cp);
+    }
+  }
+  loop();
+}
+
+// ── CAPTURE ───────────────────────────────────────────────────────────────────
+function doCapture(meas,cp){
+  if('vibrate'in navigator)navigator.vibrate([40,20,80]);
+
+  const cap=document.createElement('canvas');
+  cap.width=oc.width;cap.height=oc.height;
+  const c=cap.getContext('2d');
+
+  // Draw video frame
+  if(cp)c.drawImage(video,cp.sx,cp.sy,cp.sw,cp.sh,0,0,cap.width,cap.height);
+  // Draw skeleton + overlay
+  if(latestPose)drawSkeleton(latestPose,cp,c);
+  drawMeasOverlay(meas,c);
+
+  cap.toBlob(blob=>{
+    capturedImageBlob=blob;
+    showResults(meas,cap);
+  },'image/jpeg',0.90);
+}
+
+// ── RESULTS ───────────────────────────────────────────────────────────────────
+function showResults(meas,capCanvas){
+  stopScan();
+
+  // Copy captured image into preview canvas
+  const pc=document.getElementById('preview-canvas');
+  pc.width=capCanvas.width;pc.height=capCanvas.height;
+  pc.getContext('2d').drawImage(capCanvas,0,0);
+
+  // Sub-heading
+  document.getElementById('res-sub').textContent=
+    `${meas.heightCm} cm · ${Math.round(meas.mmPx*10)/10} mm/px`;
+
+  // Build measurement cards
+  const grid=document.getElementById('meas-grid');
+  grid.innerHTML='';
+
+  const conf=meas.confidence;
+  const confLabel=conf>0.7?'High confidence':conf>0.4?'Moderate confidence':'Estimate';
+
+  function card(label,val,unit,highlight,note){
+    if(val==null)return;
+    const d=document.createElement('div');
+    d.className='meas-card'+(highlight?' highlight':'');
+    d.innerHTML=`
+      <div class="meas-lbl">${label}</div>
+      <div class="meas-val">${val}<span>${unit}</span></div>
+      ${note?`<div class="meas-confidence">${note}</div>`:''}
+    `;
+    grid.appendChild(d);
+  }
+  function cardFull(label,val,unit,note){
+    if(val==null)return;
+    const d=document.createElement('div');
+    d.className='meas-card full';
+    d.innerHTML=`
+      <div class="meas-lbl">${label}</div>
+      <div class="meas-val">${val}<span>${unit}</span></div>
+      ${note?`<div class="meas-confidence">${note}</div>`:''}
+    `;
+    grid.appendChild(d);
+  }
+
+  cardFull('Height (input)',meas.heightCm,'cm','Reference scale',true,'Your input');
+  card('Shoulders',meas.shoulderCm,'cm',true,confLabel);
+  card('Hips',meas.hipCm,'cm',false,confLabel);
+  card('Torso',meas.torsoCm,'cm',false,confLabel);
+  card('Inseam',meas.inseamCm,'cm',false,confLabel);
+  card('Arm length',meas.armCm,'cm',false,confLabel);
+
+  show('screen-results');
+}
+
+function shareResults(){
+  if(!capturedImageBlob)return;
+  const file=new File([capturedImageBlob],'body-scan.jpg',{type:'image/jpeg'});
+  if(navigator.canShare?.({files:[file]})){
+    navigator.share({files:[file],title:'Body Scan Results'}).catch(()=>downloadCapture());
+  } else {
+    downloadCapture();
+  }
+}
+
+function downloadCapture(){
+  if(!capturedImageBlob)return;
+  const a=document.createElement('a');
+  a.href=URL.createObjectURL(capturedImageBlob);
+  a.download='body-scan.jpg';a.click();
+}
+
+// ── INIT ──────────────────────────────────────────────────────────────────────
+// Pre-load the model in the background while user fills in height
+loadDetector().catch(()=>{});
+</script>
+
+<!-- TensorFlow.js + MoveNet -->
+<script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs-core@4.17.0/dist/tf-core.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs-converter@4.17.0/dist/tf-converter.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs-backend-webgl@4.17.0/dist/tf-backend-webgl.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/@tensorflow-models/pose-detection@2.1.3/dist/pose-detection.min.js"></script>
+
+</body>
+</html>
