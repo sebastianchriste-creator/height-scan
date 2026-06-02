@@ -129,6 +129,39 @@
 
     /* note about confidence */
     .results-note{padding:0 20px 16px;font-size:11px;color:rgba(255,255,255,0.25);line-height:1.5;text-align:center}
+
+    /* ── LAST CAPTURE BUTTON (on scan screen) ── */
+    #btn-last{
+      position:absolute;left:14px;
+      background:rgba(0,0,0,0.65);border:1px solid rgba(255,255,255,0.25);
+      color:#eee;font-size:11px;font-weight:600;padding:8px 14px;border-radius:20px;
+      display:none;cursor:pointer;letter-spacing:.03em;
+    }
+    #btn-last.show{display:block}
+
+    /* ── FULLSCREEN IMAGE VIEWER ── */
+    #img-viewer{
+      position:fixed;inset:0;background:rgba(0,0,0,0.95);z-index:100;
+      display:none;flex-direction:column;align-items:center;justify-content:center;
+    }
+    #img-viewer.show{display:flex}
+    #img-viewer img{max-width:100%;max-height:85%;object-fit:contain;border-radius:4px}
+    #img-viewer-close{
+      position:absolute;top:max(16px,env(safe-area-inset-top));right:16px;
+      background:rgba(255,255,255,0.12);border:none;color:#fff;
+      font-size:22px;width:40px;height:40px;border-radius:50%;cursor:pointer;
+      display:flex;align-items:center;justify-content:center;
+    }
+
+    /* make preview canvas tappable */
+    .results-preview-wrap{cursor:pointer}
+    .results-preview-wrap::after{
+      content:'Tap to enlarge';
+      position:absolute;bottom:8px;right:10px;
+      font-size:10px;color:rgba(255,255,255,0.4);
+      font-family:-apple-system,sans-serif;pointer-events:none;
+    }
+    .results-preview-wrap{position:relative}
   </style>
 </head>
 <body>
@@ -187,6 +220,13 @@
   </div>
 
   <div id="framing-err"></div>
+  <button id="btn-last" onclick="showLastCapture()">📷 Last</button>
+</div>
+
+<!-- ── FULLSCREEN IMAGE VIEWER ── -->
+<div id="img-viewer">
+  <button id="img-viewer-close" onclick="closeViewer()">✕</button>
+  <img id="img-viewer-img" src="" alt="capture">
 </div>
 
 <!-- ── SCREEN 3: RESULTS ── -->
@@ -196,7 +236,7 @@
     <div class="results-sub" id="res-sub">Based on your height</div>
   </div>
 
-  <div class="results-preview-wrap">
+  <div class="results-preview-wrap" onclick="openViewer()">
     <canvas id="preview-canvas"></canvas>
   </div>
 
@@ -249,7 +289,9 @@ let heightHist=[];
 const STABLE_FRAMES=22, STABLE_TOL_CM=2.5;
 let hasAutoCaptured=false;
 let lastMeas=null;
-let capturedImageBlob=null;
+let capturedImageBlob=null;      // current session capture
+let lastCapturedBlob=null;       // persists across rescans
+let lastCapturedDataURL=null;    // for fast viewer display
 
 const video=document.getElementById('video');
 const oc=document.getElementById('oc');
@@ -299,7 +341,29 @@ function goBack(){
 }
 
 function rescan(){
+  // keep lastCapturedBlob so "Last" still works
   show('screen-intro');
+}
+
+// ── LAST CAPTURE VIEWER ────────────────────────────────────────────────────────
+function showLastCapture(){
+  if(!lastCapturedDataURL)return;
+  document.getElementById('img-viewer-img').src=lastCapturedDataURL;
+  document.getElementById('img-viewer').classList.add('show');
+}
+function openViewer(){
+  if(!lastCapturedDataURL)return;
+  document.getElementById('img-viewer-img').src=lastCapturedDataURL;
+  document.getElementById('img-viewer').classList.add('show');
+}
+function closeViewer(){
+  document.getElementById('img-viewer').classList.remove('show');
+}
+function updateLastBtn(){
+  const scanActive=document.getElementById('screen-scan').classList.contains('active');
+  const viewerOpen=document.getElementById('img-viewer').classList.contains('show');
+  document.getElementById('btn-last').classList.toggle('show',
+    !!lastCapturedBlob && scanActive && !viewerOpen);
 }
 
 // ── START SCAN ────────────────────────────────────────────────────────────────
@@ -327,8 +391,9 @@ async function startScan(){
   oc.width=window.innerWidth;
   oc.height=window.innerHeight;
 
-  // Stab ring position — just above bottom safe area
+  // Stab ring + last button position
   positionStabRing();
+  updateLastBtn();
 
   // Load model if needed
   if(!detector){
@@ -344,6 +409,7 @@ function positionStabRing(){
   const ring=document.getElementById('stab-ring');
   const safeBot=parseInt(getComputedStyle(document.documentElement).getPropertyValue('--sat'))||0;
   ring.style.bottom=(safeBot+24)+'px';
+  document.getElementById('btn-last').style.bottom=(safeBot+36)+'px';
 }
 
 function stopScan(){
@@ -531,22 +597,90 @@ function drawSkeleton(pose,cp,c=ctx){
 }
 
 // ── MEASUREMENT OVERLAY DRAWING ───────────────────────────────────────────────
-function drawMeasOverlay(meas,c=ctx){
+// Draws labelled brackets directly on body keypoints.
+// Used both for the live scan HUD and baked into the captured image.
+function drawMeasOverlay(meas,c=ctx,W=oc.width){
   if(!meas)return;
   c.save();
 
-  // Full-body height bracket on the right
-  const bx=meas.noseSX+60;
-  c.strokeStyle='rgba(255,220,50,0.9)';c.lineWidth=1.5;
-  c.beginPath();c.moveTo(bx,meas.crownSY);c.lineTo(bx,meas.floorSY);c.stroke();
-  [meas.crownSY,meas.floorSY].forEach(ty=>{
-    c.beginPath();c.moveTo(bx-6,ty);c.lineTo(bx+6,ty);c.stroke();
-  });
-  const midY=(meas.crownSY+meas.floorSY)/2;
-  c.fillStyle='rgba(0,0,0,0.65)';c.fillRect(bx+10,midY-12,76,24);
-  c.fillStyle='#FFD700';c.font='bold 14px monospace';
-  c.textAlign='left';c.textBaseline='middle';
-  c.fillText(meas.heightCm+' cm',bx+14,midY);
+  const kps=meas.kps; // screen coords, may be null per keypoint
+
+  // ── helper: pill label ──────────────────────────────────────────────────
+  function pill(text,cx,cy,color='#FFD700',bg='rgba(0,0,0,0.72)'){
+    c.font='bold 12px -apple-system,monospace';
+    const tw=c.measureText(text).width;
+    const pw=tw+16,ph=22,rx=8;
+    c.fillStyle=bg;
+    c.beginPath();c.roundRect(cx-pw/2,cy-ph/2,pw,ph,rx);c.fill();
+    c.fillStyle=color;c.textAlign='center';c.textBaseline='middle';
+    c.fillText(text,cx,cy);
+  }
+
+  // ── helper: horizontal bracket (width measurement) ──────────────────────
+  function hBracket(x1,x2,y,label,color='#7ec8e3'){
+    if(x1==null||x2==null||label==null)return;
+    c.strokeStyle=color;c.lineWidth=1.5;
+    c.beginPath();c.moveTo(x1,y);c.lineTo(x2,y);c.stroke();
+    [x1,x2].forEach(x=>{
+      c.beginPath();c.moveTo(x,y-6);c.lineTo(x,y+6);c.stroke();
+    });
+    pill(label,(x1+x2)/2,y-14,color);
+  }
+
+  // ── helper: vertical bracket (length measurement) ────────────────────────
+  function vBracket(x,y1,y2,label,color='#FFD700',side=1){
+    if(x==null||y1==null||y2==null||label==null)return;
+    const bx=x+side*18;
+    c.strokeStyle=color;c.lineWidth=1.5;
+    c.beginPath();c.moveTo(bx,y1);c.lineTo(bx,y2);c.stroke();
+    [y1,y2].forEach(ty=>{
+      c.beginPath();c.moveTo(bx-5,ty);c.lineTo(bx+5,ty);c.stroke();
+    });
+    const lx=bx+side*36;
+    // clamp so label stays on screen
+    const clampedX=Math.max(50,Math.min(W-50,lx));
+    pill(label,clampedX,(y1+y2)/2,color);
+  }
+
+  const ls=kps[KP.L_SHOULDER],rs=kps[KP.R_SHOULDER];
+  const lh=kps[KP.L_HIP],     rh=kps[KP.R_HIP];
+  const lk=kps[KP.L_KNEE],    rk=kps[KP.R_KNEE];
+  const la=kps[KP.L_ANKLE],   ra=kps[KP.R_ANKLE];
+
+  // ── 1. HEIGHT — vertical bracket on right of body ───────────────────────
+  const rightEdge=rs?rs.x:meas.noseSX;
+  vBracket(rightEdge+30,meas.crownSY,meas.floorSY,meas.heightCm+' cm','#FFD700',1);
+
+  // ── 2. SHOULDER WIDTH — horizontal bracket above shoulders ──────────────
+  if(ls&&rs){
+    const shY=Math.min(ls.y,rs.y)-18;
+    hBracket(ls.x,rs.x,shY,
+      meas.shoulderCm?meas.shoulderCm+' cm':null,'#7ec8e3');
+  }
+
+  // ── 3. HIP WIDTH — horizontal bracket below hips ────────────────────────
+  if(lh&&rh){
+    const hipY=Math.max(lh.y,rh.y)+18;
+    hBracket(lh.x,rh.x,hipY,
+      meas.hipCm?meas.hipCm+' cm':null,'#ff9632');
+  }
+
+  // ── 4. TORSO — vertical bracket on left of body ─────────────────────────
+  if(ls&&rs&&lh&&rh){
+    const midShX=(ls.x+rs.x)/2, midShY=(ls.y+rs.y)/2;
+    const midHipX=(lh.x+rh.x)/2, midHipY=(lh.y+rh.y)/2;
+    const leftEdge=Math.min(ls.x,lh.x);
+    vBracket(leftEdge-12,midShY,midHipY,
+      meas.torsoCm?meas.torsoCm+' cm':null,'#4CAF50',-1);
+  }
+
+  // ── 5. INSEAM — vertical bracket between legs ────────────────────────────
+  if(lh&&rh){
+    const midHipX=(lh.x+rh.x)/2, midHipY=(lh.y+rh.y)/2;
+    const ankleY=la&&ra?(la.y+ra.y)/2:la?la.y:ra?ra.y:meas.floorSY;
+    vBracket(midHipX,midHipY,ankleY,
+      meas.inseamCm?meas.inseamCm+' cm':null,'#E8604C',1);
+  }
 
   c.restore();
 }
@@ -620,26 +754,72 @@ function doCapture(meas,cp){
   cap.width=oc.width;cap.height=oc.height;
   const c=cap.getContext('2d');
 
-  // Draw video frame
+  // 1. Video frame
   if(cp)c.drawImage(video,cp.sx,cp.sy,cp.sw,cp.sh,0,0,cap.width,cap.height);
-  // Draw skeleton + overlay
+  // 2. Skeleton
   if(latestPose)drawSkeleton(latestPose,cp,c);
-  drawMeasOverlay(meas,c);
+  // 3. Full measurement overlay (baked into the image)
+  drawMeasOverlay(meas,c,cap.width);
+
+  // 4. Bottom info bar
+  drawInfoBar(c,meas,cap.width,cap.height);
+
+  // Store dataURL for instant viewer access
+  lastCapturedDataURL=cap.toDataURL('image/jpeg',0.92);
 
   cap.toBlob(blob=>{
     capturedImageBlob=blob;
+    lastCapturedBlob=blob;
+    updateLastBtn();
     showResults(meas,cap);
-  },'image/jpeg',0.90);
+  },'image/jpeg',0.92);
+}
+
+// Draws a compact info bar at the bottom of the captured image
+function drawInfoBar(c,meas,W,H){
+  const PAD=12,LH=18;
+  const lines=[
+    `Height: ${meas.heightCm} cm  ·  Scale: ${meas.mmPx} mm/px`,
+    [
+      meas.shoulderCm?`Shoulders: ${meas.shoulderCm} cm`:'',
+      meas.hipCm?`Hips: ${meas.hipCm} cm`:'',
+      meas.torsoCm?`Torso: ${meas.torsoCm} cm`:'',
+    ].filter(Boolean).join('  ·  '),
+    [
+      meas.inseamCm?`Inseam: ${meas.inseamCm} cm`:'',
+      meas.armCm?`Arm: ${meas.armCm} cm`:'',
+    ].filter(Boolean).join('  ·  '),
+  ].filter(Boolean);
+
+  const barH=PAD*2+lines.length*LH;
+  c.fillStyle='rgba(0,0,0,0.80)';
+  c.fillRect(0,H-barH,W,barH);
+  // accent line
+  c.fillStyle='#7ec8e3';c.fillRect(0,H-barH,W,2);
+
+  c.font='11px -apple-system,monospace';
+  c.textAlign='left';c.textBaseline='top';
+  lines.forEach((line,i)=>{
+    c.fillStyle=i===0?'#fff':'rgba(255,255,255,0.6)';
+    c.fillText(line,PAD,H-barH+PAD+i*LH);
+  });
+  // watermark
+  c.font='9px monospace';c.fillStyle='rgba(255,255,255,0.2)';
+  c.textAlign='right';
+  c.fillText('body scan',W-PAD,H-PAD-9);
 }
 
 // ── RESULTS ───────────────────────────────────────────────────────────────────
 function showResults(meas,capCanvas){
   stopScan();
 
-  // Copy captured image into preview canvas
+  // Show captured image in preview (use img tag for efficiency)
+  const wrap=document.querySelector('.results-preview-wrap');
+  wrap.innerHTML='<canvas id="preview-canvas"></canvas>';
   const pc=document.getElementById('preview-canvas');
   pc.width=capCanvas.width;pc.height=capCanvas.height;
   pc.getContext('2d').drawImage(capCanvas,0,0);
+  wrap.onclick=openViewer;
 
   // Sub-heading
   document.getElementById('res-sub').textContent=
@@ -675,7 +855,7 @@ function showResults(meas,capCanvas){
     grid.appendChild(d);
   }
 
-  cardFull('Height (input)',meas.heightCm,'cm','Reference scale',true,'Your input');
+  cardFull('Height (input)',meas.heightCm,'cm','Your input');
   card('Shoulders',meas.shoulderCm,'cm',true,confLabel);
   card('Hips',meas.hipCm,'cm',false,confLabel);
   card('Torso',meas.torsoCm,'cm',false,confLabel);
@@ -699,7 +879,7 @@ function downloadCapture(){
   if(!capturedImageBlob)return;
   const a=document.createElement('a');
   a.href=URL.createObjectURL(capturedImageBlob);
-  a.download='body-scan.jpg';a.click();
+  a.download=`body-scan-${lastMeas?.heightCm||''}cm.jpg`;a.click();
 }
 
 // ── INIT ──────────────────────────────────────────────────────────────────────
