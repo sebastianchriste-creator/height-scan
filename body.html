@@ -490,7 +490,11 @@ function calcMeas(pose, heightCm){
   const shoulderCm=pxToCm(distS(ls,rs));
 
   // Hip width
-  const hipCm=pxToCm(distS(lh,rh));
+  // MoveNet places hip keypoints at the hip *joints* (femoral head), not the outer
+  // hip edge. Anthropometric data shows the outer hip is ~1.6× the joint-to-joint
+  // distance, so we apply that correction to get a realistic hip width.
+  const HIP_CORRECTION=1.6;
+  const hipCm=pxToCm(distS(lh,rh) != null ? distS(lh,rh)*HIP_CORRECTION : null);
 
   // Torso: mid-shoulder to mid-hip
   let torsoCm=null;
