@@ -1104,7 +1104,7 @@ function calcMeas(pose, heightCm){
     // Lower threshold: 1.05× so narrow-hipped people don't get their valid
     // silhouette rejected. Previous 1.3× was rejecting readings like 33cm hip
     // where joint was 28cm (ratio 1.17) — those are real, not errors.
-    const jointFloorPx=jointPx*1.05;
+    const jointFloorPx=jointPx*1.10; // 1.10: rejects bad silhouette (~1.0x joint) but accepts valid narrow hips (1.17x+)
 
     // Shorts detection: high knee keypoint confidence → knees are visible → shorts.
     // Shorts wearers need a lower fallback ratio (~1.25×) because the shorts hem
