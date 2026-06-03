@@ -898,7 +898,15 @@ function calcMeas(pose, heightCm){
       const cx=(waistSil.leftX+waistSil.rightX)/2;
       waistSil={leftX:cx-fallbackPx/2,rightX:cx+fallbackPx/2,widthPx:fallbackPx,isFallback:true};
       waistCm=pxToCm(fallbackPx);
-      // keep waistScrY as-is so the bracket still appears at the right height
+    }
+    // If waist scan returned nothing at all, unconditional joint-ratio fallback
+    if(!waistCm&&ls&&rs&&lh&&rh){
+      const fallbackPx=jointPx*1.3;
+      const midX=(ls.x+rs.x)/2;
+      const shY=(ls.y+rs.y)/2, hipY=(lh.y+rh.y)/2;
+      waistCm=pxToCm(fallbackPx);
+      waistScrY=shY+(hipY-shY)*0.40; // 40% down the torso = natural waist level
+      waistSil={leftX:midX-fallbackPx/2,rightX:midX+fallbackPx/2,widthPx:fallbackPx,isFallback:true};
     }
   }
 
