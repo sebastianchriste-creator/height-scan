@@ -576,10 +576,13 @@ function v2s(vx,vy,cp){return{x:(vx-cp.sx)*cp.scale,y:(vy-cp.sy)*cp.scale};}
 
 // ── SILHOUETTE EDGE SCAN ──────────────────────────────────────────────────────
 // Single-strip scan at one Y level. Used for shoulders.
-// guardLeft/guardRight in screen px constrain the search window.
-function detectSilhouetteWidth(yScrCenter, cp, guardLeft, guardRight){
+// guardLeft/guardRight: outer bounds of the search window (screen px).
+// seedLeft/seedRight:  if provided, scan OUTWARD from these positions instead
+//   of inward from the outer edges. Used for shoulders — start at each joint
+//   and scan outward to find the shoulder seam, not the arm silhouette.
+function detectSilhouetteWidth(yScrCenter, cp, guardLeft, guardRight, seedLeft, seedRight){
   if(!scanSrcW)return null;
-  const STRIP_H=32, vW=scanSrcW, vH=scanSrcH; // taller strip = more rows averaged = less noise at low contrast
+  const STRIP_H=32, vW=scanSrcW, vH=scanSrcH;
   const yVid=yScrCenter/cp.scale+cp.sy;
   if(yVid<STRIP_H/2||yVid>vH-STRIP_H/2)return null;
   const xVL=Math.max(0,  guardLeft /cp.scale+cp.sx);
@@ -590,13 +593,21 @@ function detectSilhouetteWidth(yScrCenter, cp, guardLeft, guardRight){
   sc.width=xW;sc.height=STRIP_H;
   const sctx=sc.getContext('2d',{willReadFrequently:true});
   sctx.drawImage(scanSource, xVL, yVid-STRIP_H/2, xW, STRIP_H, 0, 0, xW, STRIP_H);
-  return _edgesFromCanvas(sctx, xW, STRIP_H, xVL, cp);
+
+  // Convert optional seed screen coords → sample (canvas) coords
+  // sample_x = (vid_x - xVL) where vid_x = scrX/cp.scale + cp.sx
+  const toSamp = scrX => Math.round(scrX/cp.scale + cp.sx - xVL);
+  const seedLS = seedLeft  != null ? toSamp(seedLeft)  : null;
+  const seedRS = seedRight != null ? toSamp(seedRight) : null;
+  return _edgesFromCanvas(sctx, xW, STRIP_H, xVL, cp, seedLS, seedRS);
 }
 
 // Shared edge-finder: given a canvas context of width xW × h,
-// scans each row for edges and returns the column-averaged result.
-// xVL: the video X offset of the canvas left edge.
-function _edgesFromCanvas(sctx, xW, h, xVL, cp){
+// returns the left/right edge positions in screen coords.
+// seedLS/seedRS (optional, in sample coords): when provided, scan OUTWARD
+// from those positions to find the edge — used for shoulders so we start at
+// the joint and find the shoulder tip, not the arm beyond it.
+function _edgesFromCanvas(sctx, xW, h, xVL, cp, seedLS, seedRS){
   const px=sctx.getImageData(0,0,xW,h).data;
   // Per-column luma average over all rows
   const luma=new Float32Array(xW);
@@ -623,8 +634,20 @@ function _edgesFromCanvas(sctx, xW, h, xVL, cp){
   if(maxG<2)return null; // post-stretch threshold — noise floor is higher after normalisation
   const thr=Math.max(maxG*0.22, 2.0);
   let leftIdx=-1,rightIdx=-1;
-  for(let x=0;x<xW;x++){if(gradS[x]>=thr){leftIdx=x;break;}}
-  for(let x=xW-1;x>=0;x--){if(gradS[x]>=thr){rightIdx=x;break;}}
+  if(seedLS!=null&&seedRS!=null){
+    // Shoulder mode: scan OUTWARD from joint positions to find shoulder tip
+    const lStart=Math.max(0,Math.min(xW-1,seedLS));
+    const rStart=Math.max(0,Math.min(xW-1,seedRS));
+    for(let x=lStart;x>=0;x--){if(gradS[x]>=thr){leftIdx=x;break;}}
+    for(let x=rStart;x<xW;x++){if(gradS[x]>=thr){rightIdx=x;break;}}
+    // Fallback: if no edge found outward, use outermost edge
+    if(leftIdx<0) for(let x=0;x<xW;x++){if(gradS[x]>=thr){leftIdx=x;break;}}
+    if(rightIdx<0) for(let x=xW-1;x>=0;x--){if(gradS[x]>=thr){rightIdx=x;break;}}
+  } else {
+    // Default: outermost edge from each side
+    for(let x=0;x<xW;x++){if(gradS[x]>=thr){leftIdx=x;break;}}
+    for(let x=xW-1;x>=0;x--){if(gradS[x]>=thr){rightIdx=x;break;}}
+  }
   if(leftIdx<0||rightIdx<=leftIdx)return null;
   const leftScrX =(xVL+leftIdx -cp.sx)*cp.scale;
   const rightScrX=(xVL+rightIdx-cp.sx)*cp.scale;
@@ -826,7 +849,10 @@ function calcMeas(pose, heightCm){
     const shY=(ls.y+rs.y)/2;
     const jDist=distS(ls,rs);
     const midX=(ls.x+rs.x)/2;
-    const sil=detectSilhouetteWidth(shY,cp, midX-jDist*1.6, midX+jDist*1.6);
+    // Pass joint X positions as seeds — scan outward from each joint to find
+    // the shoulder tip, not the arm beyond it. Window stays wide to ensure the
+    // shoulder edge falls within the sampled strip.
+    const sil=detectSilhouetteWidth(shY,cp, midX-jDist*1.6, midX+jDist*1.6, ls.x, rs.x);
     if(sil&&sil.widthPx>20){
       shoulderCm=pxToCm(sil.widthPx);
       shoulderSil=sil;
@@ -840,12 +866,21 @@ function calcMeas(pose, heightCm){
     }
   }
 
+  // ── WAIST CORRECTION ─────────────────────────────────────────────────────
+  // Silhouette finds the narrowest visual point which sits slightly above where
+  // people measure with a tape. Confirmed −7.9% bias across P1–P3 (fitted).
+  // Apply ×1.08 correction when not in baggy-clothing mode.
+  // (baggyClothing not yet computed here — applied after that check below)
+
   // ── BAGGINESS DETECTION ───────────────────────────────────────────────────
   // If shoulder silhouette exceeds height × 0.27, the clothing is likely adding
   // significant bulk (hoodie, oversized jacket, etc.) and measurements will
   // overstate actual body dimensions. Flag it — don't silently correct, since
   // a genuinely broad/muscular person could also exceed this threshold.
   const baggyClothing = shoulderCm > heightCm * 0.27;
+
+  // Apply waist correction only for fitted clothing
+  if(waistCm && !baggyClothing) waistCm=+(waistCm*1.08).toFixed(1);
 
   // ── TORSO SILHOUETTE: one pass gives waist (min) + hip (max) ────────────
   // Key constraint: the search window is bounded by the SHOULDER silhouette
