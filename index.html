@@ -234,6 +234,9 @@
   </div>
 
   <div id="framing-err"></div>
+  <div id="baggy-warn" style="display:none;position:absolute;top:0;left:0;right:0;padding:10px 16px;background:rgba(237,180,50,0.92);font-size:12px;font-weight:600;color:#000;text-align:center;">
+    ⚠ Bulky clothing detected — measurements may reflect clothing, not body shape
+  </div>
   <button id="btn-last" onclick="showLastCapture()">📷 Last</button>
 </div>
 
@@ -256,6 +259,9 @@
 
   <div class="meas-grid" id="meas-grid"></div>
 
+  <div id="baggy-results-warn" style="display:none;margin:0 20px 12px;padding:10px 14px;background:rgba(237,180,50,0.15);border:1px solid rgba(237,180,50,0.4);border-radius:10px;font-size:12px;color:#EDB432;text-align:center;">
+    ⚠ Bulky clothing detected — measurements may reflect clothing rather than body shape. For best accuracy wear fitted clothing.
+  </div>
   <p class="results-note">Measurements are estimates from a 2D photo. Accuracy improves when standing straight, facing the camera, arms slightly away from body.</p>
 
   <div class="results-actions">
@@ -827,14 +833,19 @@ function calcMeas(pose, heightCm){
     } else {
       shoulderCm=pxToCm(jDist);
     }
-    // Sanity check: shoulder < 22% of height = silhouette/joint both failed
-    // (light clothing on light background). Fall back to height proportion:
-    // adult shoulder width ≈ 24.5% of height across most body types.
+    // Too narrow: silhouette/joint both failed (low contrast). Use height proportion.
     if(shoulderCm < heightCm*0.22){
       shoulderCm=+(heightCm*0.245).toFixed(1);
-      shoulderSil=null; // mark as estimated so overlay shows no silhouette bracket
+      shoulderSil=null;
     }
   }
+
+  // ── BAGGINESS DETECTION ───────────────────────────────────────────────────
+  // If shoulder silhouette exceeds height × 0.27, the clothing is likely adding
+  // significant bulk (hoodie, oversized jacket, etc.) and measurements will
+  // overstate actual body dimensions. Flag it — don't silently correct, since
+  // a genuinely broad/muscular person could also exceed this threshold.
+  const baggyClothing = shoulderCm > heightCm * 0.27;
 
   // ── TORSO SILHOUETTE: one pass gives waist (min) + hip (max) ────────────
   // Key constraint: the search window is bounded by the SHOULDER silhouette
@@ -967,6 +978,7 @@ function calcMeas(pose, heightCm){
     shoulderSil, hipSil, waistSil, waistScrY,
     shoulderJointCm: ls&&rs ? pxToCm(distS(ls,rs)) : null,
     hipJointCm:      lh&&rh ? pxToCm(distS(lh,rh)) : null,
+    baggyClothing,
     confidence:+avgKpScore.toFixed(2),
     crownSY:crownS.y,floorSY:floorS.y,noseSX:crownS.x,
     kps:kps.map(k=>k?v2s(k.x,k.y,cp):null),
@@ -1235,6 +1247,10 @@ function startLoop(){
     const fe=document.getElementById('framing-err');
     fe.textContent=framingErr||'';fe.classList.toggle('show',!!framingErr);
 
+    // Baggy clothing warning on scan screen
+    const baggyWarn=document.getElementById('baggy-warn');
+    if(baggyWarn) baggyWarn.style.display=meas?.baggyClothing?'block':'none';
+
     if(!hasAutoCaptured&&meas&&!framingErr&&stabRatio>=1.0){
       hasAutoCaptured=true;
       lastMeas={...meas};
@@ -1354,6 +1370,7 @@ function showResults(meas,capCanvas){
     grid.appendChild(d);
   }
 
+  document.getElementById('baggy-results-warn').style.display=meas.baggyClothing?'block':'none';
   cardFull('Height (input)',meas.heightCm,'cm','Your input');
   card('Shoulders',meas.shoulderCm,'cm',true,
     meas.shoulderSil?`Silhouette · joint: ${meas.shoulderJointCm} cm`:confLabel);
