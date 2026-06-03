@@ -442,6 +442,7 @@ async function handlePhotoUpload(evt){
     meas=calcMeas(pose, knownHeightCm);
   }catch(e){
     console.error('calcMeas error:',e);
+    alert('Measurement error: '+e.message);
   }
   lastMeas=meas?{...meas}:null;
 
@@ -857,10 +858,9 @@ function calcMeas(pose, heightCm){
     const shY=(ls.y+rs.y)/2;
     const jDist=distS(ls,rs);
     const midX=(ls.x+rs.x)/2;
-    // Pass joint X positions as seeds — scan outward from each joint to find
-    // the shoulder tip, not the arm beyond it. Window stays wide to ensure the
-    // shoulder edge falls within the sampled strip.
-    const sil=detectSilhouetteWidth(shY,cp, midX-jDist*1.6, midX+jDist*1.6, ls.x, rs.x);
+    // Use a tighter window — jDist×1.2 from centre keeps us close to the
+    // actual shoulder seam without including the arm beyond it.
+    const sil=detectSilhouetteWidth(shY,cp, midX-jDist*1.2, midX+jDist*1.2);
     if(sil&&sil.widthPx>20){
       shoulderCm=pxToCm(sil.widthPx);
       shoulderSil=sil;
