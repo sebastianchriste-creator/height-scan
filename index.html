@@ -1038,12 +1038,17 @@ function calcMeas(pose, heightCm){
     }
   }
 
+  // Baggy detection uses RAW shoulder before any cap is applied, so that
+  // capping a wide shoulder doesn't inadvertently flip the baggy flag.
+  const rawShoulderForBaggy = shoulderCm;
+
   // ── BAGGINESS DETECTION ───────────────────────────────────────────────────
   // If shoulder silhouette exceeds height × 0.27, the clothing is likely adding
   // significant bulk (hoodie, oversized jacket, etc.) and measurements will
   // overstate actual body dimensions. Flag it — don't silently correct, since
   // a genuinely broad/muscular person could also exceed this threshold.
-  const baggyClothing = shoulderCm > heightCm * 0.27;
+  // Use rawShoulderForBaggy (pre-cap) so the baggy flag reflects actual clothing bulk
+  const baggyClothing = rawShoulderForBaggy > heightCm * 0.27;
 
   // ── TORSO SILHOUETTE: one pass gives waist (min) + hip (max) ────────────
   // Key constraint: the search window is bounded by the SHOULDER silhouette
