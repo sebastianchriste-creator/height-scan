@@ -612,8 +612,8 @@ function scanTorsoSilhouette(topScrY, botScrY, midScrX, halfWidthScr, cp){
   const xVL=Math.max(0, (midScrX-halfWidthScr)/cp.scale+cp.sx);
   const xVR=Math.min(vW,(midScrX+halfWidthScr)/cp.scale+cp.sx);
 
-  // Sample at reduced resolution: 120 px wide, proportional height
-  const SAMPLE_W=120;
+  // Sample at 240 px wide — double the previous resolution for sharper edges
+  const SAMPLE_W=240;
   const scaleX=(xVR-xVL)/SAMPLE_W;
   const rawH=yVidBot-yVidTop;
   if(rawH<10||xVR-xVL<10)return null;
@@ -752,29 +752,39 @@ function calcMeas(pose, heightCm){
     const torsoH=hipY-shY;
     const midX=(ls.x+rs.x)/2;
 
-    // Constrain to shoulder silhouette width (+5% margin) — never wider
-    const shoulderHalfPx=shoulderSil
-      ? shoulderSil.widthPx/2*1.05          // use real outer shoulder edge
-      : distS(ls,rs)*0.65;                  // fallback: 65% of joint dist from centre
-    const halfW=Math.max(shoulderHalfPx, distS(ls,rs)*0.55);
+    // ── Search window based on hip JOINT distance ─────────────────────────
+    // Hip joints tell us where the pelvis actually is. Using ±62.5% of that
+    // distance as the half-width keeps arms out even when they hang close.
+    const hipJointDist=distS(lh,rh);
+    const halfW=hipJointDist*0.5*1.25;
 
     // Extend scan slightly below hip joints for hip flare
     const scanBot=hipY+torsoH*0.25;
 
     const rows=scanTorsoSilhouette(shY, scanBot, midX, halfW, cp);
+
+    // Shoulder width as sanity ceiling — torso can't be wider than shoulders
+    const shoulderPx=shoulderSil?shoulderSil.widthPx:distS(ls,rs);
+
     if(rows&&rows.length>=4){
-      // Waist: narrowest row in the upper 60% of the torso span
+      // Waist: narrowest row in the upper 60% of the torso span.
+      // Floor: must be ≥ 55% of shoulder width (rules out impossible readings
+      // like belt-line gaps or shirt edges being mis-detected as waist).
       const waistZoneBot=shY+torsoH*0.60;
-      const waistRows=rows.filter(r=>r.y>shY+10&&r.y<waistZoneBot);
+      const waistMin=shoulderPx*0.55;
+      const waistRows=rows.filter(r=>r.y>shY+10&&r.y<waistZoneBot&&r.widthPx>=waistMin);
       if(waistRows.length>=2){
         const best=waistRows.reduce((a,b)=>b.widthPx<a.widthPx?b:a);
         waistCm=pxToCm(best.widthPx);
         waistSil={leftX:best.leftX,rightX:best.rightX,widthPx:best.widthPx};
         waistScrY=best.y;
       }
-      // Hip: widest row in lower 50% + below-joint extension
+      // Hip: widest row in lower 50% + below-joint extension.
+      // Ceiling: must be ≤ shoulder width (can't be wider than shoulders in a
+      // front-facing 2D view — if it is, we're still picking up an arm).
       const hipZoneTop=shY+torsoH*0.50;
-      const hipRows=rows.filter(r=>r.y>hipZoneTop);
+      const hipMax=shoulderPx*1.05;
+      const hipRows=rows.filter(r=>r.y>hipZoneTop&&r.widthPx<=hipMax);
       if(hipRows.length>=2){
         const best=hipRows.reduce((a,b)=>b.widthPx>a.widthPx?b:a);
         hipCm=pxToCm(best.widthPx);
