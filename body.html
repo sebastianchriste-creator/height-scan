@@ -386,19 +386,40 @@ async function handlePhotoUpload(evt){
   // Point all scan functions at the uploaded image
   setScanSource(img);
 
-  // Size canvas to window
-  oc.width=window.innerWidth;oc.height=window.innerHeight;
+  // Use a FIXED canvas size derived from the image aspect ratio, capped at 1080px.
+  // Using window dimensions causes different results when browser chrome changes
+  // size (keyboard, URL bar, etc.) — this makes photo processing fully deterministic.
+  const MAX_W=1080;
+  const photoW=Math.min(img.naturalWidth, MAX_W);
+  const photoH=Math.round(photoW * img.naturalHeight / img.naturalWidth);
+  oc.width=photoW; oc.height=photoH;
   const cp=getCrop();
 
   // Draw image to canvas
   ctx.clearRect(0,0,oc.width,oc.height);
   if(cp) ctx.drawImage(img,cp.sx,cp.sy,cp.sw,cp.sh,0,0,oc.width,oc.height);
 
-  // Run pose on the image element (MoveNet supports HTMLImageElement)
+  // Run pose estimation 3× and average keypoints to smooth GPU non-determinism.
+  // MoveNet on WebGL can produce slightly different outputs each run due to
+  // floating-point ordering on the GPU — averaging eliminates this variance.
   let pose=null;
   try{
-    const poses=await detector.estimatePoses(img,{flipHorizontal:false});
-    pose=poses.length>0?poses[0]:null;
+    const runs=[];
+    for(let i=0;i<3;i++){
+      const p=await detector.estimatePoses(img,{flipHorizontal:false});
+      if(p.length>0) runs.push(p[0]);
+    }
+    if(runs.length>0){
+      // Average keypoint x, y, score across all runs
+      const avg=JSON.parse(JSON.stringify(runs[0]));
+      avg.keypoints=avg.keypoints.map((kp,ki)=>({
+        ...kp,
+        x:runs.reduce((s,r)=>s+r.keypoints[ki].x,0)/runs.length,
+        y:runs.reduce((s,r)=>s+r.keypoints[ki].y,0)/runs.length,
+        score:runs.reduce((s,r)=>s+r.keypoints[ki].score,0)/runs.length,
+      }));
+      pose=avg;
+    }
   }catch(e){console.error(e);}
 
   if(!pose){
