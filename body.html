@@ -428,6 +428,62 @@ function getCrop(){
 // Convert video coords → screen coords
 function v2s(vx,vy,cp){return{x:(vx-cp.sx)*cp.scale,y:(vy-cp.sy)*cp.scale};}
 
+// ── SILHOUETTE EDGE SCAN ──────────────────────────────────────────────────────
+// At a given screen Y, finds the outer left/right body edges by scanning the
+// actual video frame. Used for shoulder width where the joint-to-joint distance
+// understates the real outer width (especially with jackets, broad builds, etc.).
+// guardLeft/guardRight constrain the search window in screen px.
+function detectSilhouetteWidth(yScrCenter, cp, guardLeft, guardRight){
+  if(!video.videoWidth)return null;
+  const STRIP_H=16;
+  const vW=video.videoWidth, vH=video.videoHeight;
+
+  // Screen → video Y
+  const yVid=yScrCenter/cp.scale+cp.sy;
+  if(yVid<STRIP_H/2||yVid>vH-STRIP_H/2)return null;
+
+  // Screen guard → video X
+  const xVL=Math.max(0,  guardLeft /cp.scale+cp.sx);
+  const xVR=Math.min(vW, guardRight/cp.scale+cp.sx);
+  const xW=Math.round(xVR-xVL);
+  if(xW<20)return null;
+
+  const sc=document.createElement('canvas');
+  sc.width=xW;sc.height=STRIP_H;
+  const sctx=sc.getContext('2d',{willReadFrequently:true});
+  sctx.drawImage(video, xVL, yVid-STRIP_H/2, xW, STRIP_H, 0, 0, xW, STRIP_H);
+  const px=sctx.getImageData(0,0,xW,STRIP_H).data;
+
+  // Column luma average
+  const luma=new Float32Array(xW);
+  for(let x=0;x<xW;x++){
+    let s=0;
+    for(let y=0;y<STRIP_H;y++){const i=(y*xW+x)*4;s+=0.299*px[i]+0.587*px[i+1]+0.114*px[i+2];}
+    luma[x]=s/STRIP_H;
+  }
+
+  // Horizontal gradient + smooth
+  const grad=new Float32Array(xW);
+  for(let x=1;x<xW-1;x++)grad[x]=Math.abs(luma[x+1]-luma[x-1])/2;
+  const gradS=new Float32Array(xW);
+  for(let x=2;x<xW-2;x++)gradS[x]=(grad[x-2]+2*grad[x-1]+3*grad[x]+2*grad[x+1]+grad[x+2])/10;
+
+  let maxG=0;
+  for(let x=0;x<xW;x++)maxG=Math.max(maxG,gradS[x]);
+  if(maxG<4)return null;
+
+  const thr=maxG*0.30;
+  let leftIdx=-1, rightIdx=-1;
+  for(let x=0;x<xW;x++){if(gradS[x]>=thr){leftIdx=x;break;}}
+  for(let x=xW-1;x>=0;x--){if(gradS[x]>=thr){rightIdx=x;break;}}
+  if(leftIdx<0||rightIdx<=leftIdx)return null;
+
+  // Local index → screen X  (v2s: scrX = (vidX - cp.sx) * cp.scale)
+  const leftScrX =(xVL+leftIdx -cp.sx)*cp.scale;
+  const rightScrX=(xVL+rightIdx-cp.sx)*cp.scale;
+  return{leftX:leftScrX, rightX:rightScrX, widthPx:rightScrX-leftScrX};
+}
+
 // ── MEASUREMENT CALCULATION ───────────────────────────────────────────────────
 function calcMeas(pose, heightCm){
   if(!pose||heightCm<100)return null;
@@ -486,8 +542,22 @@ function calcMeas(pose, heightCm){
   const la_=kpS(KP.L_ANKLE)||{x:v2s(nose.x,ankleVY,cp).x,y:v2s(nose.x,ankleVY,cp).y};
   const ra_=kpS(KP.R_ANKLE)||la_;
 
-  // Shoulder width
-  const shoulderCm=pxToCm(distS(ls,rs));
+  // Shoulder width — silhouette scan at shoulder Y level for outer (garment) width.
+  // Fall back to joint distance if silhouette scan fails.
+  let shoulderCm=null, shoulderSil=null;
+  if(ls&&rs){
+    const shY=(ls.y+rs.y)/2;
+    const jDist=distS(ls,rs);
+    const midX=(ls.x+rs.x)/2;
+    // Search window: joint centre ± 1.6× joint distance (wide enough for jackets)
+    const sil=detectSilhouetteWidth(shY,cp, midX-jDist*1.6, midX+jDist*1.6);
+    if(sil&&sil.widthPx>20){
+      shoulderCm=pxToCm(sil.widthPx);
+      shoulderSil=sil;
+    } else {
+      shoulderCm=pxToCm(jDist);
+    }
+  }
 
   // Hip width
   // MoveNet places hip keypoints at the hip *joints* (femoral head), not the outer
@@ -528,6 +598,8 @@ function calcMeas(pose, heightCm){
   return{
     heightCm,mmPx:+mmPx.toFixed(3),bodyPx:Math.round(bodyPx),
     shoulderCm,hipCm,torsoCm,inseamCm,armCm,
+    shoulderSil,          // silhouette edge points for overlay drawing
+    shoulderJointCm: ls&&rs ? pxToCm(distS(ls,rs)) : null, // raw joint width for reference
     confidence:+avgKpScore.toFixed(2),
     crownSY:crownS.y,floorSY:floorS.y,noseSX:crownS.x,
     kps:kps.map(k=>k?v2s(k.x,k.y,cp):null),
@@ -655,11 +727,24 @@ function drawMeasOverlay(meas,c=ctx,W=oc.width){
   const rightEdge=rs?rs.x:meas.noseSX;
   vBracket(rightEdge+30,meas.crownSY,meas.floorSY,meas.heightCm+' cm','#FFD700',1);
 
-  // ── 2. SHOULDER WIDTH — horizontal bracket above shoulders ──────────────
+  // ── 2. SHOULDER WIDTH — silhouette edges if available, else joint ────────
   if(ls&&rs){
-    const shY=Math.min(ls.y,rs.y)-18;
-    hBracket(ls.x,rs.x,shY,
-      meas.shoulderCm?meas.shoulderCm+' cm':null,'#7ec8e3');
+    const shY=Math.min(ls.y,rs.y)-14;
+    if(meas.shoulderSil){
+      // Silhouette bracket (brighter white-blue = outer body edge)
+      hBracket(meas.shoulderSil.leftX, meas.shoulderSil.rightX, shY,
+        meas.shoulderCm+' cm', '#7ec8e3');
+      // Small joint markers to show where keypoints are
+      c.save();
+      c.strokeStyle='rgba(126,200,227,0.4)';c.lineWidth=1;c.setLineDash([3,3]);
+      c.beginPath();c.moveTo(ls.x,shY-6);c.lineTo(ls.x,shY+6);c.stroke();
+      c.beginPath();c.moveTo(rs.x,shY-6);c.lineTo(rs.x,shY+6);c.stroke();
+      c.setLineDash([]);c.restore();
+    } else {
+      // Fallback: joint-to-joint
+      hBracket(ls.x,rs.x,shY,
+        meas.shoulderCm?meas.shoulderCm+' cm':null,'#7ec8e3');
+    }
   }
 
   // ── 3. HIP WIDTH — horizontal bracket below hips ────────────────────────
@@ -860,7 +945,10 @@ function showResults(meas,capCanvas){
   }
 
   cardFull('Height (input)',meas.heightCm,'cm','Your input');
-  card('Shoulders',meas.shoulderCm,'cm',true,confLabel);
+  card('Shoulders',meas.shoulderCm,'cm',true,
+    meas.shoulderSil
+      ? `Silhouette · joint: ${meas.shoulderJointCm} cm`
+      : confLabel);
   card('Hips',meas.hipCm,'cm',false,confLabel);
   card('Torso',meas.torsoCm,'cm',false,confLabel);
   card('Inseam',meas.inseamCm,'cm',false,confLabel);
