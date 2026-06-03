@@ -203,14 +203,87 @@
     <p class="height-tip">Used only as a reference scale — not stored.</p>
   </div>
 
-  <button class="btn-primary" id="btn-start" onclick="startScan()" disabled>
-    Scan My Body
+  <button class="btn-primary" id="btn-start" onclick="showInstructions()" disabled>
+    Next →
   </button>
 
-  <button class="btn-photo" id="btn-open-photo" onclick="triggerPhotoUpload()" disabled>
-    📂 Use existing photo
-  </button>
   <input type="file" id="photo-input" accept="image/*" style="display:none" onchange="handlePhotoUpload(event)">
+</div>
+
+<!-- ── SCREEN 1.5: POSTURE INSTRUCTIONS ── -->
+<div id="screen-instructions" class="screen">
+  <div style="width:100%;max-width:400px;padding:28px 24px;display:flex;flex-direction:column;align-items:center;gap:0;overflow-y:auto;max-height:100%">
+
+    <div style="font-size:13px;font-weight:700;letter-spacing:.15em;color:rgba(255,255,255,0.3);text-transform:uppercase;margin-bottom:6px">Get ready</div>
+    <h2 style="font-size:22px;font-weight:700;text-align:center;margin-bottom:20px">Stand like this</h2>
+
+    <!-- SVG posture illustration -->
+    <svg viewBox="0 0 200 340" width="160" height="272" style="margin-bottom:24px;flex-shrink:0">
+      <!-- Background glow -->
+      <ellipse cx="100" cy="320" rx="50" ry="8" fill="rgba(126,200,227,0.08)"/>
+
+      <!-- Person outline -->
+      <!-- Head -->
+      <circle cx="100" cy="36" r="22" fill="none" stroke="#7ec8e3" stroke-width="2.5"/>
+      <!-- Neck -->
+      <line x1="100" y1="58" x2="100" y2="72" stroke="#7ec8e3" stroke-width="2.5"/>
+      <!-- Torso -->
+      <path d="M68,72 L132,72 L126,168 L74,168 Z" fill="rgba(126,200,227,0.08)" stroke="#7ec8e3" stroke-width="2.5" stroke-linejoin="round"/>
+      <!-- Left arm (person's left = image right) — slightly angled out -->
+      <line x1="132" y1="80" x2="155" y2="148" stroke="#7ec8e3" stroke-width="2.5" stroke-linecap="round"/>
+      <circle cx="155" cy="151" r="4" fill="#7ec8e3"/>
+      <!-- Right arm -->
+      <line x1="68" y1="80" x2="45" y2="148" stroke="#7ec8e3" stroke-width="2.5" stroke-linecap="round"/>
+      <circle cx="45" cy="151" r="4" fill="#7ec8e3"/>
+      <!-- Left leg -->
+      <line x1="113" y1="168" x2="116" y2="300" stroke="#7ec8e3" stroke-width="2.5" stroke-linecap="round"/>
+      <!-- Right leg -->
+      <line x1="87" y1="168" x2="84" y2="300" stroke="#7ec8e3" stroke-width="2.5" stroke-linecap="round"/>
+      <!-- Feet -->
+      <line x1="106" y1="300" x2="126" y2="308" stroke="#7ec8e3" stroke-width="2.5" stroke-linecap="round"/>
+      <line x1="74" y1="300" x2="94" y2="308" stroke="#7ec8e3" stroke-width="2.5" stroke-linecap="round"/>
+
+      <!-- Annotation: arms out -->
+      <path d="M162,120 Q175,115 178,106" fill="none" stroke="rgba(237,217,78,0.7)" stroke-width="1.5" stroke-dasharray="3,2"/>
+      <text x="182" y="104" fill="#EDD94E" font-size="9" font-family="monospace" text-anchor="start">slightly</text>
+      <text x="182" y="115" fill="#EDD94E" font-size="9" font-family="monospace" text-anchor="start">out</text>
+
+      <!-- Annotation: feet together -->
+      <path d="M128,316 Q138,322 138,328" fill="none" stroke="rgba(76,175,80,0.7)" stroke-width="1.5" stroke-dasharray="3,2"/>
+      <text x="141" y="331" fill="#4CAF50" font-size="9" font-family="monospace" text-anchor="start">together</text>
+
+      <!-- Annotation: face camera -->
+      <path d="M126,30 Q140,20 148,22" fill="none" stroke="rgba(200,164,232,0.7)" stroke-width="1.5" stroke-dasharray="3,2"/>
+      <text x="150" y="21" fill="#c8a4e8" font-size="9" font-family="monospace" text-anchor="start">face</text>
+      <text x="150" y="32" fill="#c8a4e8" font-size="9" font-family="monospace" text-anchor="start">camera</text>
+
+      <!-- Checkmark centre -->
+      <circle cx="100" cy="190" r="0" fill="none"/>
+    </svg>
+
+    <!-- Tips list -->
+    <div style="width:100%;display:flex;flex-direction:column;gap:10px;margin-bottom:28px">
+      <div style="display:flex;align-items:flex-start;gap:12px">
+        <span style="font-size:16px;flex-shrink:0">👕</span>
+        <span style="font-size:13px;color:rgba(255,255,255,0.75);line-height:1.5"><strong style="color:#fff">Fitted clothing</strong> — t-shirt or fitted shirt and trousers. Avoid hoodies, open shirts or baggy tops.</span>
+      </div>
+      <div style="display:flex;align-items:flex-start;gap:12px">
+        <span style="font-size:16px;flex-shrink:0">🎨</span>
+        <span style="font-size:13px;color:rgba(255,255,255,0.75);line-height:1.5"><strong style="color:#fff">Contrast with background</strong> — wear something darker or lighter than the wall behind you.</span>
+      </div>
+      <div style="display:flex;align-items:flex-start;gap:12px">
+        <span style="font-size:16px;flex-shrink:0">📏</span>
+        <span style="font-size:13px;color:rgba(255,255,255,0.75);line-height:1.5"><strong style="color:#fff">Stand 2–3 m away</strong> — full body head to toe must be visible.</span>
+      </div>
+      <div style="display:flex;align-items:flex-start;gap:12px">
+        <span style="font-size:16px;flex-shrink:0">💡</span>
+        <span style="font-size:13px;color:rgba(255,255,255,0.75);line-height:1.5"><strong style="color:#fff">Good lighting</strong> — avoid strong backlighting or shadows across the body.</span>
+      </div>
+    </div>
+
+    <button class="btn-primary" style="width:100%" onclick="startScan()">Start Scan</button>
+    <button class="btn-photo" style="width:100%;margin-top:10px" onclick="triggerPhotoUpload()">📂 Use existing photo</button>
+  </div>
 </div>
 
 <!-- ── SCREEN 2: SCAN ── -->
@@ -353,10 +426,16 @@ function validateHeight(){
   const h=getHeightCm();
   const ok=h>=100&&h<=250;
   document.getElementById('btn-start').disabled=!ok;
-  document.getElementById('btn-open-photo').disabled=!ok;
+}
+
+function showInstructions(){
+  knownHeightCm=getHeightCm();
+  if(knownHeightCm<100||knownHeightCm>250)return;
+  show('screen-instructions');
 }
 
 function triggerPhotoUpload(){
+  knownHeightCm=getHeightCm();
   document.getElementById('photo-input').value='';
   document.getElementById('photo-input').click();
 }
