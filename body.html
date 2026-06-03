@@ -559,12 +559,45 @@ function calcMeas(pose, heightCm){
     }
   }
 
-  // Hip width
-  // MoveNet places hip keypoints at the hip *joints* (femoral head), not the outer
-  // hip edge. Anthropometric data shows the outer hip is ~1.6× the joint-to-joint
-  // distance, so we apply that correction to get a realistic hip width.
-  const HIP_CORRECTION=1.6;
-  const hipCm=pxToCm(distS(lh,rh) != null ? distS(lh,rh)*HIP_CORRECTION : null);
+  // Hip width — silhouette scan at hip Y level (same approach as shoulders).
+  // Falls back to joint distance if scan fails.
+  let hipCm=null, hipSil=null;
+  if(lh&&rh){
+    const hipY=(lh.y+rh.y)/2;
+    const hipMidX=(lh.x+rh.x)/2;
+    const hipJDist=distS(lh,rh);
+    const hipSilResult=detectSilhouetteWidth(hipY,cp, hipMidX-hipJDist*2.0, hipMidX+hipJDist*2.0);
+    if(hipSilResult&&hipSilResult.widthPx>20){
+      hipCm=pxToCm(hipSilResult.widthPx);
+      hipSil=hipSilResult;
+    } else {
+      hipCm=pxToCm(hipJDist);
+    }
+  }
+
+  // Waist — narrowest silhouette between shoulders and hips.
+  // Keypoints can never give you this; only silhouette scanning can.
+  let waistCm=null, waistSil=null, waistScrY=null;
+  if(ls&&rs&&lh&&rh){
+    const shY=(ls.y+rs.y)/2;
+    const hipY=(lh.y+rh.y)/2;
+    const midX=(ls.x+rs.x+lh.x+rh.x)/4;
+    const searchW=distS(ls,rs)*2.0; // generous window
+    // Scan every 4 screen-px between shoulders and hips, find narrowest
+    const step=4;
+    let minWidth=Infinity, bestSil=null, bestY=null;
+    for(let y=shY+step;y<hipY-step;y+=step){
+      const s=detectSilhouetteWidth(y,cp, midX-searchW, midX+searchW);
+      if(s&&s.widthPx>20&&s.widthPx<minWidth){
+        minWidth=s.widthPx;bestSil=s;bestY=y;
+      }
+    }
+    if(bestSil){
+      waistCm=pxToCm(bestSil.widthPx);
+      waistSil=bestSil;
+      waistScrY=bestY;
+    }
+  }
 
   // Torso: mid-shoulder to mid-hip
   let torsoCm=null;
@@ -597,9 +630,10 @@ function calcMeas(pose, heightCm){
 
   return{
     heightCm,mmPx:+mmPx.toFixed(3),bodyPx:Math.round(bodyPx),
-    shoulderCm,hipCm,torsoCm,inseamCm,armCm,
-    shoulderSil,          // silhouette edge points for overlay drawing
-    shoulderJointCm: ls&&rs ? pxToCm(distS(ls,rs)) : null, // raw joint width for reference
+    shoulderCm,hipCm,waistCm,torsoCm,inseamCm,armCm,
+    shoulderSil, hipSil, waistSil, waistScrY,
+    shoulderJointCm: ls&&rs ? pxToCm(distS(ls,rs)) : null,
+    hipJointCm:      lh&&rh ? pxToCm(distS(lh,rh)) : null,
     confidence:+avgKpScore.toFixed(2),
     crownSY:crownS.y,floorSY:floorS.y,noseSX:crownS.x,
     kps:kps.map(k=>k?v2s(k.x,k.y,cp):null),
@@ -747,11 +781,28 @@ function drawMeasOverlay(meas,c=ctx,W=oc.width){
     }
   }
 
-  // ── 3. HIP WIDTH — horizontal bracket below hips ────────────────────────
+  // ── 3. HIP WIDTH — silhouette edges if available, else joint ─────────────
   if(lh&&rh){
-    const hipY=Math.max(lh.y,rh.y)+18;
-    hBracket(lh.x,rh.x,hipY,
-      meas.hipCm?meas.hipCm+' cm':null,'#ff9632');
+    const hipBracketY=Math.max(lh.y,rh.y)+18;
+    if(meas.hipSil){
+      hBracket(meas.hipSil.leftX, meas.hipSil.rightX, hipBracketY,
+        meas.hipCm+' cm','#ff9632');
+      // Joint tick marks
+      c.save();
+      c.strokeStyle='rgba(255,150,50,0.4)';c.lineWidth=1;c.setLineDash([3,3]);
+      c.beginPath();c.moveTo(lh.x,hipBracketY-6);c.lineTo(lh.x,hipBracketY+6);c.stroke();
+      c.beginPath();c.moveTo(rh.x,hipBracketY-6);c.lineTo(rh.x,hipBracketY+6);c.stroke();
+      c.setLineDash([]);c.restore();
+    } else {
+      hBracket(lh.x,rh.x,hipBracketY,
+        meas.hipCm?meas.hipCm+' cm':null,'#ff9632');
+    }
+  }
+
+  // ── 3b. WAIST — narrowest silhouette between shoulders and hips ──────────
+  if(meas.waistSil&&meas.waistScrY!=null){
+    hBracket(meas.waistSil.leftX, meas.waistSil.rightX, meas.waistScrY,
+      meas.waistCm+' cm','#c8a4e8'); // purple = new silhouette-only measurement
   }
 
   // ── 4. TORSO — vertical bracket on left of body ─────────────────────────
@@ -871,10 +922,11 @@ function drawInfoBar(c,meas,W,H){
     `Height: ${meas.heightCm} cm  ·  Scale: ${meas.mmPx} mm/px`,
     [
       meas.shoulderCm?`Shoulders: ${meas.shoulderCm} cm`:'',
+      meas.waistCm?`Waist: ${meas.waistCm} cm`:'',
       meas.hipCm?`Hips: ${meas.hipCm} cm`:'',
-      meas.torsoCm?`Torso: ${meas.torsoCm} cm`:'',
     ].filter(Boolean).join('  ·  '),
     [
+      meas.torsoCm?`Torso: ${meas.torsoCm} cm`:'',
       meas.inseamCm?`Inseam: ${meas.inseamCm} cm`:'',
       meas.armCm?`Arm: ${meas.armCm} cm`:'',
     ].filter(Boolean).join('  ·  '),
@@ -946,10 +998,11 @@ function showResults(meas,capCanvas){
 
   cardFull('Height (input)',meas.heightCm,'cm','Your input');
   card('Shoulders',meas.shoulderCm,'cm',true,
-    meas.shoulderSil
-      ? `Silhouette · joint: ${meas.shoulderJointCm} cm`
-      : confLabel);
-  card('Hips',meas.hipCm,'cm',false,confLabel);
+    meas.shoulderSil?`Silhouette · joint: ${meas.shoulderJointCm} cm`:confLabel);
+  card('Waist',meas.waistCm,'cm',true,
+    meas.waistSil?'Silhouette':confLabel);
+  card('Hips',meas.hipCm,'cm',false,
+    meas.hipSil?`Silhouette · joint: ${meas.hipJointCm} cm`:confLabel);
   card('Torso',meas.torsoCm,'cm',false,confLabel);
   card('Inseam',meas.inseamCm,'cm',false,confLabel);
   card('Arm length',meas.armCm,'cm',false,confLabel);
