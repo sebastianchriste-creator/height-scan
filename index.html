@@ -752,43 +752,54 @@ function calcMeas(pose, heightCm){
     const torsoH=hipY-shY;
     const midX=(ls.x+rs.x)/2;
 
-    // ── Search window based on hip JOINT distance ─────────────────────────
-    // Hip joints tell us where the pelvis actually is. Using ±62.5% of that
-    // distance as the half-width keeps arms out even when they hang close.
-    const hipJointDist=distS(lh,rh);
-    const halfW=hipJointDist*0.5*1.25;
+    // ── Search window: based on shoulder silhouette ────────────────────────
+    // Previous hip-joint-based window (~34px half-width) was too narrow — the
+    // real waist/hip edge sits at ~46-48px from centre for this body type.
+    // Shoulder silhouette × 0.88 gives a half-width that covers real waist/hip
+    // while staying inside the arm zone most of the time.
+    const shoulderPx=shoulderSil?shoulderSil.widthPx:distS(ls,rs);
+    const halfW=shoulderPx*0.5*0.88;
 
     // Extend scan slightly below hip joints for hip flare
     const scanBot=hipY+torsoH*0.25;
 
     const rows=scanTorsoSilhouette(shY, scanBot, midX, halfW, cp);
 
-    // Shoulder width as sanity ceiling — torso can't be wider than shoulders
-    const shoulderPx=shoulderSil?shoulderSil.widthPx:distS(ls,rs);
+    // Helper: nth-percentile of a sorted numeric array
+    function pct(sorted,p){
+      const i=Math.max(0,Math.min(sorted.length-1,Math.floor(sorted.length*p)));
+      return sorted[i];
+    }
 
     if(rows&&rows.length>=4){
-      // Waist: narrowest row in the upper 60% of the torso span.
-      // Floor: must be ≥ 55% of shoulder width (rules out impossible readings
-      // like belt-line gaps or shirt edges being mis-detected as waist).
+      // ── Waist: 35th-percentile width in the upper 60% of the torso ──────
+      // 35th percentile = consistently narrow, but arm-contaminated rows (wider)
+      // don't pull the value up the way plain minimum does.
+      // Floor: ≥ 55% of shoulder width to reject belt-gap artifacts.
       const waistZoneBot=shY+torsoH*0.60;
       const waistMin=shoulderPx*0.55;
-      const waistRows=rows.filter(r=>r.y>shY+10&&r.y<waistZoneBot&&r.widthPx>=waistMin);
-      if(waistRows.length>=2){
-        const best=waistRows.reduce((a,b)=>b.widthPx<a.widthPx?b:a);
-        waistCm=pxToCm(best.widthPx);
-        waistSil={leftX:best.leftX,rightX:best.rightX,widthPx:best.widthPx};
-        waistScrY=best.y;
+      const waistRows=rows
+        .filter(r=>r.y>shY+10&&r.y<waistZoneBot&&r.widthPx>=waistMin)
+        .sort((a,b)=>a.widthPx-b.widthPx);
+      if(waistRows.length>=3){
+        const chosen=waistRows[Math.floor(waistRows.length*0.35)];
+        waistCm=pxToCm(chosen.widthPx);
+        waistSil={leftX:chosen.leftX,rightX:chosen.rightX,widthPx:chosen.widthPx};
+        waistScrY=chosen.y;
       }
-      // Hip: widest row in lower 50% + below-joint extension.
-      // Ceiling: must be ≤ shoulder width (can't be wider than shoulders in a
-      // front-facing 2D view — if it is, we're still picking up an arm).
+
+      // ── Hip: 65th-percentile width in the lower 50% + below-joint zone ──
+      // 65th percentile = consistently wide, but single arm rows don't win.
+      // Ceiling: ≤ shoulder width (wider = arm contamination).
       const hipZoneTop=shY+torsoH*0.50;
       const hipMax=shoulderPx*1.05;
-      const hipRows=rows.filter(r=>r.y>hipZoneTop&&r.widthPx<=hipMax);
-      if(hipRows.length>=2){
-        const best=hipRows.reduce((a,b)=>b.widthPx>a.widthPx?b:a);
-        hipCm=pxToCm(best.widthPx);
-        hipSil={leftX:best.leftX,rightX:best.rightX,widthPx:best.widthPx,y:best.y};
+      const hipRows=rows
+        .filter(r=>r.y>hipZoneTop&&r.widthPx<=hipMax)
+        .sort((a,b)=>a.widthPx-b.widthPx);
+      if(hipRows.length>=3){
+        const chosen=hipRows[Math.floor(hipRows.length*0.65)];
+        hipCm=pxToCm(chosen.widthPx);
+        hipSil={leftX:chosen.leftX,rightX:chosen.rightX,widthPx:chosen.widthPx,y:chosen.y};
       }
     }
   }
@@ -1011,6 +1022,30 @@ function drawMeasOverlay(meas,c=ctx,W=oc.width){
     const ankleY=la&&ra?(la.y+ra.y)/2:la?la.y:ra?ra.y:meas.floorSY;
     vBracket(midHipX,midHipY,ankleY,
       meas.inseamCm?meas.inseamCm+' cm':null,'#E8604C',1);
+  }
+
+  // ── 6. ARM LENGTH — bracket along the arm (shoulder→elbow→wrist) ─────────
+  const le=kps[KP.L_ELBOW], lw2=kps[KP.L_WRIST];
+  const re=kps[KP.R_ELBOW], rw2=kps[KP.R_WRIST];
+  // Prefer the arm where wrist is visible; draw a polyline then label at wrist
+  const armKps = (ls&&le&&lw2) ? [ls,le,lw2]
+               : (rs&&re&&rw2) ? [rs,re,rw2]
+               : null;
+  if(armKps&&meas.armCm){
+    c.save();
+    c.strokeStyle='rgba(200,164,232,0.7)';c.lineWidth=2;c.setLineDash([5,4]);
+    c.beginPath();c.moveTo(armKps[0].x,armKps[0].y);
+    armKps.slice(1).forEach(p=>c.lineTo(p.x,p.y));
+    c.stroke();c.setLineDash([]);
+    // Small dots at joints
+    armKps.forEach(p=>{
+      c.beginPath();c.arc(p.x,p.y,3,0,Math.PI*2);
+      c.fillStyle='rgba(200,164,232,0.85)';c.fill();
+    });
+    // Label at wrist
+    const wrist=armKps[armKps.length-1];
+    pill(meas.armCm+' cm', wrist.x+(wrist.x<W/2?-50:50), wrist.y,'#c8a4e8');
+    c.restore();
   }
 
   c.restore();
