@@ -874,21 +874,12 @@ function calcMeas(pose, heightCm){
     }
   }
 
-  // ── WAIST CORRECTION ─────────────────────────────────────────────────────
-  // Silhouette finds the narrowest visual point which sits slightly above where
-  // people measure with a tape. Confirmed −7.9% bias across P1–P3 (fitted).
-  // Apply ×1.08 correction when not in baggy-clothing mode.
-  // (baggyClothing not yet computed here — applied after that check below)
-
   // ── BAGGINESS DETECTION ───────────────────────────────────────────────────
   // If shoulder silhouette exceeds height × 0.27, the clothing is likely adding
   // significant bulk (hoodie, oversized jacket, etc.) and measurements will
   // overstate actual body dimensions. Flag it — don't silently correct, since
   // a genuinely broad/muscular person could also exceed this threshold.
   const baggyClothing = shoulderCm > heightCm * 0.27;
-
-  // Apply waist correction only for fitted clothing
-  if(waistCm && !baggyClothing) waistCm=+(waistCm*1.08).toFixed(1);
 
   // ── TORSO SILHOUETTE: one pass gives waist (min) + hip (max) ────────────
   // Key constraint: the search window is bounded by the SHOULDER silhouette
@@ -985,6 +976,12 @@ function calcMeas(pose, heightCm){
       waistSil={leftX:midX-fallbackPx/2,rightX:midX+fallbackPx/2,widthPx:fallbackPx,isFallback:true};
     }
   }
+
+  // ── WAIST CORRECTION ─────────────────────────────────────────────────────
+  // Silhouette finds the narrowest visual point which sits slightly above where
+  // people measure with a tape. Confirmed −7.9% bias across P1–P3 (fitted).
+  // Apply only when not baggy clothing (which inflates rather than deflates).
+  if(waistCm && !baggyClothing) waistCm=+(waistCm*1.08).toFixed(1);
 
   // Torso: mid-shoulder to mid-hip
   let torsoCm=null;
