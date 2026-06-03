@@ -743,9 +743,9 @@ function calcMeas(pose, heightCm){
   }
 
   // ── TORSO SILHOUETTE: one pass gives waist (min) + hip (max) ────────────
-  // Scan from armpit level down to below hip joints in a single canvas.
-  // Waist = narrowest row in the upper 60% of torso.
-  // Hip   = widest row in the lower 50% of torso (below natural waist).
+  // Key constraint: the search window is bounded by the SHOULDER silhouette
+  // width. The torso can never be wider than the shoulders at any level, so
+  // this prevents picking up arms that hang beside the body.
   let hipCm=null, hipSil=null;
   let waistCm=null, waistSil=null, waistScrY=null;
 
@@ -754,23 +754,28 @@ function calcMeas(pose, heightCm){
     const hipY=(lh.y+rh.y)/2;
     const torsoH=hipY-shY;
     const midX=(ls.x+rs.x)/2;
-    const halfW=distS(ls,rs)*1.8; // generous window
 
-    // Extend scan below hip joints — actual widest hip point is often there
-    const scanBot=hipY+torsoH*0.3;
+    // Constrain to shoulder silhouette width (+5% margin) — never wider
+    const shoulderHalfPx=shoulderSil
+      ? shoulderSil.widthPx/2*1.05          // use real outer shoulder edge
+      : distS(ls,rs)*0.65;                  // fallback: 65% of joint dist from centre
+    const halfW=Math.max(shoulderHalfPx, distS(ls,rs)*0.55);
+
+    // Extend scan slightly below hip joints for hip flare
+    const scanBot=hipY+torsoH*0.25;
 
     const rows=scanTorsoSilhouette(shY, scanBot, midX, halfW, cp);
     if(rows&&rows.length>=4){
-      // Waist: narrowest row in top 65% of torso (shY → shY+0.65*torsoH)
-      const waistZoneBot=shY+torsoH*0.65;
-      const waistRows=rows.filter(r=>r.y>shY+8&&r.y<waistZoneBot);
+      // Waist: narrowest row in the upper 60% of the torso span
+      const waistZoneBot=shY+torsoH*0.60;
+      const waistRows=rows.filter(r=>r.y>shY+10&&r.y<waistZoneBot);
       if(waistRows.length>=2){
         const best=waistRows.reduce((a,b)=>b.widthPx<a.widthPx?b:a);
         waistCm=pxToCm(best.widthPx);
         waistSil={leftX:best.leftX,rightX:best.rightX,widthPx:best.widthPx};
         waistScrY=best.y;
       }
-      // Hip: widest row from 50% of torso downward (natural hip flare zone)
+      // Hip: widest row in lower 50% + below-joint extension
       const hipZoneTop=shY+torsoH*0.50;
       const hipRows=rows.filter(r=>r.y>hipZoneTop);
       if(hipRows.length>=2){
