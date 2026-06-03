@@ -951,7 +951,7 @@ function calcMeas(pose, heightCm){
 
     if(hipSil&&hipSil.widthPx<jointFloorPx){
       // Silhouette implausibly narrow — fall back to joint ratio
-      const fallbackPx=jointPx*1.6;
+      const fallbackPx=jointPx*1.45; // reduced from 1.6 — P1-P7 data shows 1.6 consistently overestimates
       const cx=(hipSil.leftX+hipSil.rightX)/2;
       hipSil={leftX:cx-fallbackPx/2,rightX:cx+fallbackPx/2,widthPx:fallbackPx,y:hipSil.y,isFallback:true};
       hipCm=pxToCm(fallbackPx);
