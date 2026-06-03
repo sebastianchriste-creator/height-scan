@@ -429,59 +429,120 @@ function getCrop(){
 function v2s(vx,vy,cp){return{x:(vx-cp.sx)*cp.scale,y:(vy-cp.sy)*cp.scale};}
 
 // ── SILHOUETTE EDGE SCAN ──────────────────────────────────────────────────────
-// At a given screen Y, finds the outer left/right body edges by scanning the
-// actual video frame. Used for shoulder width where the joint-to-joint distance
-// understates the real outer width (especially with jackets, broad builds, etc.).
-// guardLeft/guardRight constrain the search window in screen px.
+// Single-strip scan at one Y level. Used for shoulders.
+// guardLeft/guardRight in screen px constrain the search window.
 function detectSilhouetteWidth(yScrCenter, cp, guardLeft, guardRight){
   if(!video.videoWidth)return null;
-  const STRIP_H=16;
-  const vW=video.videoWidth, vH=video.videoHeight;
-
-  // Screen → video Y
+  const STRIP_H=20, vW=video.videoWidth, vH=video.videoHeight;
   const yVid=yScrCenter/cp.scale+cp.sy;
   if(yVid<STRIP_H/2||yVid>vH-STRIP_H/2)return null;
-
-  // Screen guard → video X
   const xVL=Math.max(0,  guardLeft /cp.scale+cp.sx);
   const xVR=Math.min(vW, guardRight/cp.scale+cp.sx);
   const xW=Math.round(xVR-xVL);
   if(xW<20)return null;
-
   const sc=document.createElement('canvas');
   sc.width=xW;sc.height=STRIP_H;
   const sctx=sc.getContext('2d',{willReadFrequently:true});
   sctx.drawImage(video, xVL, yVid-STRIP_H/2, xW, STRIP_H, 0, 0, xW, STRIP_H);
-  const px=sctx.getImageData(0,0,xW,STRIP_H).data;
+  return _edgesFromCanvas(sctx, xW, STRIP_H, xVL, cp);
+}
 
-  // Column luma average
+// Shared edge-finder: given a canvas context of width xW × h,
+// scans each row for edges and returns the column-averaged result.
+// xVL: the video X offset of the canvas left edge.
+function _edgesFromCanvas(sctx, xW, h, xVL, cp){
+  const px=sctx.getImageData(0,0,xW,h).data;
+  // Per-column luma average over all rows
   const luma=new Float32Array(xW);
   for(let x=0;x<xW;x++){
     let s=0;
-    for(let y=0;y<STRIP_H;y++){const i=(y*xW+x)*4;s+=0.299*px[i]+0.587*px[i+1]+0.114*px[i+2];}
-    luma[x]=s/STRIP_H;
+    for(let y=0;y<h;y++){const i=(y*xW+x)*4;s+=0.299*px[i]+0.587*px[i+1]+0.114*px[i+2];}
+    luma[x]=s/h;
   }
-
-  // Horizontal gradient + smooth
+  // Gradient
   const grad=new Float32Array(xW);
   for(let x=1;x<xW-1;x++)grad[x]=Math.abs(luma[x+1]-luma[x-1])/2;
   const gradS=new Float32Array(xW);
   for(let x=2;x<xW-2;x++)gradS[x]=(grad[x-2]+2*grad[x-1]+3*grad[x]+2*grad[x+1]+grad[x+2])/10;
-
   let maxG=0;
   for(let x=0;x<xW;x++)maxG=Math.max(maxG,gradS[x]);
-  if(maxG<4)return null;
-
-  const thr=maxG*0.30;
-  let leftIdx=-1, rightIdx=-1;
+  if(maxG<2)return null; // lowered threshold
+  const thr=Math.max(maxG*0.25, 1.5);
+  let leftIdx=-1,rightIdx=-1;
   for(let x=0;x<xW;x++){if(gradS[x]>=thr){leftIdx=x;break;}}
   for(let x=xW-1;x>=0;x--){if(gradS[x]>=thr){rightIdx=x;break;}}
   if(leftIdx<0||rightIdx<=leftIdx)return null;
-
-  // Local index → screen X  (v2s: scrX = (vidX - cp.sx) * cp.scale)
   const leftScrX =(xVL+leftIdx -cp.sx)*cp.scale;
   const rightScrX=(xVL+rightIdx-cp.sx)*cp.scale;
   return{leftX:leftScrX, rightX:rightScrX, widthPx:rightScrX-leftScrX};
+}
+
+// ── TORSO SILHOUETTE SCAN ────────────────────────────────────────────────────
+// Samples the entire torso region (shoulder Y → hip Y) in ONE canvas, then
+// scans every row to find per-row left/right silhouette edges.
+// Returns { rows: [{y (screen), leftX, rightX, widthPx}] } or null.
+// Much more reliable than calling detectSilhouetteWidth per row — single
+// getImageData avoids per-call overhead and threshold adapts globally.
+function scanTorsoSilhouette(topScrY, botScrY, midScrX, halfWidthScr, cp){
+  if(!video.videoWidth)return null;
+  const vW=video.videoWidth, vH=video.videoHeight;
+
+  // Map to video coords
+  const yVidTop=Math.max(0, topScrY/cp.scale+cp.sy);
+  const yVidBot=Math.min(vH, botScrY/cp.scale+cp.sy);
+  const xVL=Math.max(0, (midScrX-halfWidthScr)/cp.scale+cp.sx);
+  const xVR=Math.min(vW,(midScrX+halfWidthScr)/cp.scale+cp.sx);
+
+  // Sample at reduced resolution: 120 px wide, proportional height
+  const SAMPLE_W=120;
+  const scaleX=(xVR-xVL)/SAMPLE_W;
+  const rawH=yVidBot-yVidTop;
+  if(rawH<10||xVR-xVL<10)return null;
+  const SAMPLE_H=Math.min(Math.round(rawH/scaleX), 300);
+  if(SAMPLE_H<4)return null;
+
+  const sc=document.createElement('canvas');
+  sc.width=SAMPLE_W;sc.height=SAMPLE_H;
+  const sctx=sc.getContext('2d',{willReadFrequently:true});
+  sctx.drawImage(video, xVL,yVidTop, xVR-xVL,rawH, 0,0, SAMPLE_W,SAMPLE_H);
+  const px=sctx.getImageData(0,0,SAMPLE_W,SAMPLE_H).data;
+
+  // Per-pixel luma
+  const luma=new Float32Array(SAMPLE_W*SAMPLE_H);
+  for(let i=0;i<SAMPLE_W*SAMPLE_H;i++)
+    luma[i]=0.299*px[i*4]+0.587*px[i*4+1]+0.114*px[i*4+2];
+
+  // For each row, find horizontal gradient and locate edges
+  // Blur each row with 3-tap before differencing
+  const rows=[];
+  const BLEND=3; // rows to average for stability
+  for(let sy=BLEND;sy<SAMPLE_H-BLEND;sy++){
+    // Average BLEND rows above+below for robustness
+    const rowL=new Float32Array(SAMPLE_W);
+    for(let dy=-BLEND;dy<=BLEND;dy++)
+      for(let x=0;x<SAMPLE_W;x++) rowL[x]+=luma[(sy+dy)*SAMPLE_W+x];
+    for(let x=0;x<SAMPLE_W;x++) rowL[x]/=(2*BLEND+1);
+
+    // Gradient
+    const g=new Float32Array(SAMPLE_W);
+    for(let x=1;x<SAMPLE_W-1;x++) g[x]=Math.abs(rowL[x+1]-rowL[x-1])/2;
+    let maxG=0;for(let x=0;x<SAMPLE_W;x++) maxG=Math.max(maxG,g[x]);
+    if(maxG<1.5)continue;
+    const thr=Math.max(maxG*0.20, 1.0);
+
+    let lIdx=-1,rIdx=-1;
+    for(let x=0;x<SAMPLE_W;x++){if(g[x]>=thr){lIdx=x;break;}}
+    for(let x=SAMPLE_W-1;x>=0;x--){if(g[x]>=thr){rIdx=x;break;}}
+    if(lIdx<0||rIdx<=lIdx)continue;
+
+    // Map sample coords back to screen coords
+    const scrY=topScrY+(sy/SAMPLE_H)*(botScrY-topScrY);
+    const vidXL=xVL+lIdx*scaleX, vidXR=xVL+rIdx*scaleX;
+    const scrXL=(vidXL-cp.sx)*cp.scale;
+    const scrXR=(vidXR-cp.sx)*cp.scale;
+    rows.push({y:scrY, leftX:scrXL, rightX:scrXR, widthPx:scrXR-scrXL});
+  }
+  return rows.length>=4?rows:null;
 }
 
 // ── MEASUREMENT CALCULATION ───────────────────────────────────────────────────
@@ -559,45 +620,46 @@ function calcMeas(pose, heightCm){
     }
   }
 
-  // Hip width — silhouette scan at hip Y level (same approach as shoulders).
-  // Falls back to joint distance if scan fails.
+  // ── TORSO SILHOUETTE: one pass gives waist (min) + hip (max) ────────────
+  // Scan from armpit level down to below hip joints in a single canvas.
+  // Waist = narrowest row in the upper 60% of torso.
+  // Hip   = widest row in the lower 50% of torso (below natural waist).
   let hipCm=null, hipSil=null;
-  if(lh&&rh){
-    const hipY=(lh.y+rh.y)/2;
-    const hipMidX=(lh.x+rh.x)/2;
-    const hipJDist=distS(lh,rh);
-    const hipSilResult=detectSilhouetteWidth(hipY,cp, hipMidX-hipJDist*2.0, hipMidX+hipJDist*2.0);
-    if(hipSilResult&&hipSilResult.widthPx>20){
-      hipCm=pxToCm(hipSilResult.widthPx);
-      hipSil=hipSilResult;
-    } else {
-      hipCm=pxToCm(hipJDist);
-    }
-  }
-
-  // Waist — narrowest silhouette between shoulders and hips.
-  // Keypoints can never give you this; only silhouette scanning can.
   let waistCm=null, waistSil=null, waistScrY=null;
+
   if(ls&&rs&&lh&&rh){
     const shY=(ls.y+rs.y)/2;
     const hipY=(lh.y+rh.y)/2;
-    const midX=(ls.x+rs.x+lh.x+rh.x)/4;
-    const searchW=distS(ls,rs)*2.0; // generous window
-    // Scan every 4 screen-px between shoulders and hips, find narrowest
-    const step=4;
-    let minWidth=Infinity, bestSil=null, bestY=null;
-    for(let y=shY+step;y<hipY-step;y+=step){
-      const s=detectSilhouetteWidth(y,cp, midX-searchW, midX+searchW);
-      if(s&&s.widthPx>20&&s.widthPx<minWidth){
-        minWidth=s.widthPx;bestSil=s;bestY=y;
+    const torsoH=hipY-shY;
+    const midX=(ls.x+rs.x)/2;
+    const halfW=distS(ls,rs)*1.8; // generous window
+
+    // Extend scan below hip joints — actual widest hip point is often there
+    const scanBot=hipY+torsoH*0.3;
+
+    const rows=scanTorsoSilhouette(shY, scanBot, midX, halfW, cp);
+    if(rows&&rows.length>=4){
+      // Waist: narrowest row in top 65% of torso (shY → shY+0.65*torsoH)
+      const waistZoneBot=shY+torsoH*0.65;
+      const waistRows=rows.filter(r=>r.y>shY+8&&r.y<waistZoneBot);
+      if(waistRows.length>=2){
+        const best=waistRows.reduce((a,b)=>b.widthPx<a.widthPx?b:a);
+        waistCm=pxToCm(best.widthPx);
+        waistSil={leftX:best.leftX,rightX:best.rightX,widthPx:best.widthPx};
+        waistScrY=best.y;
+      }
+      // Hip: widest row from 50% of torso downward (natural hip flare zone)
+      const hipZoneTop=shY+torsoH*0.50;
+      const hipRows=rows.filter(r=>r.y>hipZoneTop);
+      if(hipRows.length>=2){
+        const best=hipRows.reduce((a,b)=>b.widthPx>a.widthPx?b:a);
+        hipCm=pxToCm(best.widthPx);
+        hipSil={leftX:best.leftX,rightX:best.rightX,widthPx:best.widthPx,y:best.y};
       }
     }
-    if(bestSil){
-      waistCm=pxToCm(bestSil.widthPx);
-      waistSil=bestSil;
-      waistScrY=bestY;
-    }
   }
+  // Fallback hip from joint distance if torso scan failed
+  if(!hipCm&&lh&&rh) hipCm=pxToCm(distS(lh,rh));
 
   // Torso: mid-shoulder to mid-hip
   let torsoCm=null;
@@ -781,22 +843,14 @@ function drawMeasOverlay(meas,c=ctx,W=oc.width){
     }
   }
 
-  // ── 3. HIP WIDTH — silhouette edges if available, else joint ─────────────
-  if(lh&&rh){
-    const hipBracketY=Math.max(lh.y,rh.y)+18;
-    if(meas.hipSil){
-      hBracket(meas.hipSil.leftX, meas.hipSil.rightX, hipBracketY,
-        meas.hipCm+' cm','#ff9632');
-      // Joint tick marks
-      c.save();
-      c.strokeStyle='rgba(255,150,50,0.4)';c.lineWidth=1;c.setLineDash([3,3]);
-      c.beginPath();c.moveTo(lh.x,hipBracketY-6);c.lineTo(lh.x,hipBracketY+6);c.stroke();
-      c.beginPath();c.moveTo(rh.x,hipBracketY-6);c.lineTo(rh.x,hipBracketY+6);c.stroke();
-      c.setLineDash([]);c.restore();
-    } else {
-      hBracket(lh.x,rh.x,hipBracketY,
-        meas.hipCm?meas.hipCm+' cm':null,'#ff9632');
-    }
+  // ── 3. HIP WIDTH — widest silhouette row in hip zone ─────────────────────
+  if(meas.hipSil){
+    const hipY=meas.hipSil.y??((lh&&rh)?Math.max(lh.y,rh.y)+18:0);
+    hBracket(meas.hipSil.leftX, meas.hipSil.rightX, hipY+14,
+      meas.hipCm+' cm','#ff9632');
+  } else if(lh&&rh){
+    hBracket(lh.x,rh.x,Math.max(lh.y,rh.y)+18,
+      meas.hipCm?meas.hipCm+' cm':null,'#ff9632');
   }
 
   // ── 3b. WAIST — narrowest silhouette between shoulders and hips ──────────
