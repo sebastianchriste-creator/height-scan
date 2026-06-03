@@ -54,6 +54,15 @@
     .btn-primary:active{transform:scale(0.98);opacity:.9}
     .btn-primary:disabled{opacity:.35;cursor:default}
 
+    .btn-photo{
+      width:100%;max-width:340px;padding:13px;border-radius:16px;
+      background:transparent;border:1px solid rgba(255,255,255,0.18);
+      color:rgba(255,255,255,0.55);font-size:14px;font-weight:600;cursor:pointer;
+      margin-top:10px;transition:opacity .2s;
+    }
+    .btn-photo:disabled{opacity:.25;cursor:default}
+    .btn-photo:not(:disabled):hover{border-color:rgba(255,255,255,0.35);color:#fff}
+
     /* ── SCAN SCREEN ── */
     #screen-scan{background:#000;padding:0}
     #video{position:absolute;inset:0;width:100%;height:100%;object-fit:cover}
@@ -197,6 +206,11 @@
   <button class="btn-primary" id="btn-start" onclick="startScan()" disabled>
     Scan My Body
   </button>
+
+  <button class="btn-photo" id="btn-open-photo" onclick="triggerPhotoUpload()" disabled>
+    📂 Use existing photo
+  </button>
+  <input type="file" id="photo-input" accept="image/*" style="display:none" onchange="handlePhotoUpload(event)">
 </div>
 
 <!-- ── SCREEN 2: SCAN ── -->
@@ -322,6 +336,114 @@ function validateHeight(){
   const h=getHeightCm();
   const ok=h>=100&&h<=250;
   document.getElementById('btn-start').disabled=!ok;
+  document.getElementById('btn-open-photo').disabled=!ok;
+}
+
+function triggerPhotoUpload(){
+  document.getElementById('photo-input').value='';
+  document.getElementById('photo-input').click();
+}
+
+async function handlePhotoUpload(evt){
+  const file=evt.target.files[0];
+  if(!file)return;
+  knownHeightCm=getHeightCm();
+  if(knownHeightCm<100||knownHeightCm>250)return;
+
+  // Load image
+  const url=URL.createObjectURL(file);
+  const img=new Image();
+  await new Promise((res,rej)=>{img.onload=res;img.onerror=rej;img.src=url;});
+
+  // Show scan screen as loading state
+  show('screen-scan');
+  document.getElementById('instr-text').textContent='Analysing photo…';
+  document.getElementById('instr-sub').textContent='';
+  document.getElementById('stab-ring').style.display='none';
+  document.getElementById('btn-back').style.display='none';
+
+  // Load model if needed
+  if(!detector){
+    document.getElementById('instr-text').textContent='Loading pose model…';
+    await loadDetector();
+  }
+
+  // Run pose on image
+  let pose=null;
+  try{
+    const poses=await detector.estimatePoses(img,{flipHorizontal:false});
+    pose=poses.length>0?poses[0]:null;
+  }catch(e){console.error(e);}
+
+  if(!pose){
+    alert('No person detected in this photo. Try a full-body shot with good lighting.');
+    show('screen-intro');
+    document.getElementById('stab-ring').style.display='';
+    document.getElementById('btn-back').style.display='';
+    return;
+  }
+
+  // Render image to a full-screen canvas, compute measurements
+  oc.width=window.innerWidth;oc.height=window.innerHeight;
+
+  // Build a fake "crop" for a static image
+  const iw=img.naturalWidth, ih=img.naturalHeight;
+  const dw=oc.width, dh=oc.height;
+  let cp;
+  if(iw/ih>dw/dh){const s=dh/ih;cp={sx:(iw-dw/s)/2,sy:0,sw:dw/s,sh:ih,scale:s};}
+  else{const s=dw/iw;cp={sx:0,sy:(ih-dh/s)/2,sw:iw,sh:dh/s,scale:s};}
+
+  // Draw image to canvas
+  ctx.clearRect(0,0,dw,dh);
+  ctx.drawImage(img,cp.sx,cp.sy,cp.sw,cp.sh,0,0,dw,dh);
+
+  // For silhouette scanning we need video — swap in the image element temporarily
+  const _video=video; // save ref
+  // Patch: detectSilhouetteWidth and scanTorsoSilhouette use `video` global.
+  // We replace it temporarily.
+  const videoProxy=img; // Image has naturalWidth/naturalHeight, works with drawImage
+  videoProxy.videoWidth=img.naturalWidth;
+  videoProxy.videoHeight=img.naturalHeight;
+  videoProxy.readyState=4;
+  const origVideo=window._scanVideo||video;
+  window._photoImg=img; // used by patched getCrop
+
+  // Temporarily override globals for measurement
+  const savedVideo=video;
+  Object.defineProperty(window,'video',{value:videoProxy,configurable:true,writable:true});
+
+  const meas=calcMeas(pose, knownHeightCm);
+  lastMeas=meas?{...meas}:null;
+
+  // Restore video
+  Object.defineProperty(window,'video',{value:savedVideo,configurable:true,writable:true});
+
+  // Draw skeleton + overlay onto canvas
+  if(pose)drawSkeleton(pose,cp,ctx);
+  if(meas)drawMeasOverlay(meas,ctx,dw);
+
+  // Capture the annotated canvas
+  const cap=document.createElement('canvas');
+  cap.width=dw;cap.height=dh;
+  const cc=cap.getContext('2d');
+  cc.drawImage(oc,0,0);
+  if(pose)drawSkeleton(pose,cp,cc);
+  if(meas)drawMeasOverlay(meas,cc,dw);
+  drawInfoBar(cc,meas||{heightCm:knownHeightCm},dw,dh);
+
+  lastCapturedDataURL=cap.toDataURL('image/jpeg',0.92);
+  cap.toBlob(blob=>{
+    capturedImageBlob=blob;
+    lastCapturedBlob=blob;
+  },'image/jpeg',0.92);
+
+  // Restore scan screen UI
+  document.getElementById('stab-ring').style.display='';
+  document.getElementById('btn-back').style.display='';
+
+  if(meas) showResults(meas,cap);
+  else{alert('Could not compute measurements. Try a clearer full-body photo.');show('screen-intro');}
+  URL.revokeObjectURL(url);
 }
 
 ['cm-val','ft-val','in-val'].forEach(id=>{
@@ -777,41 +899,49 @@ function drawMeasOverlay(meas,c=ctx,W=oc.width){
 
   const kps=meas.kps; // screen coords, may be null per keypoint
 
+  const BRACKET_PAD=14; // px to extend bracket line past body edge
+
   // ── helper: pill label ──────────────────────────────────────────────────
-  function pill(text,cx,cy,color='#FFD700',bg='rgba(0,0,0,0.72)'){
+  function pill(text,cx,cy,color='#FFD700',bg='rgba(0,0,0,0.78)'){
     c.font='bold 12px -apple-system,monospace';
     const tw=c.measureText(text).width;
     const pw=tw+16,ph=22,rx=8;
+    // clamp horizontally so it stays on canvas
+    const clampedCX=Math.max(pw/2+4, Math.min(W-pw/2-4, cx));
     c.fillStyle=bg;
-    c.beginPath();c.roundRect(cx-pw/2,cy-ph/2,pw,ph,rx);c.fill();
+    c.beginPath();c.roundRect(clampedCX-pw/2,cy-ph/2,pw,ph,rx);c.fill();
     c.fillStyle=color;c.textAlign='center';c.textBaseline='middle';
-    c.fillText(text,cx,cy);
+    c.fillText(text,clampedCX,cy);
   }
 
-  // ── helper: horizontal bracket (width measurement) ──────────────────────
-  function hBracket(x1,x2,y,label,color='#7ec8e3'){
+  // ── helper: horizontal bracket — label pushed OUTSIDE the body edge ───
+  // labelSide: 'left' → pill left of x1, 'right' → pill right of x2
+  function hBracket(x1,x2,y,label,color='#7ec8e3',labelSide='right'){
     if(x1==null||x2==null||label==null)return;
+    const lx=x1-BRACKET_PAD, rx=x2+BRACKET_PAD;
     c.strokeStyle=color;c.lineWidth=1.5;
-    c.beginPath();c.moveTo(x1,y);c.lineTo(x2,y);c.stroke();
-    [x1,x2].forEach(x=>{
-      c.beginPath();c.moveTo(x,y-6);c.lineTo(x,y+6);c.stroke();
-    });
-    pill(label,(x1+x2)/2,y-14,color);
+    // main span line
+    c.beginPath();c.moveTo(lx,y);c.lineTo(rx,y);c.stroke();
+    // end ticks
+    [lx,rx].forEach(x=>{c.beginPath();c.moveTo(x,y-6);c.lineTo(x,y+6);c.stroke();});
+    // label OUTSIDE body
+    c.font='bold 12px -apple-system,monospace';
+    const pillW=c.measureText(label).width+16;
+    if(labelSide==='right') pill(label, rx+pillW/2+6, y, color);
+    else                    pill(label, lx-pillW/2-6, y, color);
   }
 
   // ── helper: vertical bracket (length measurement) ────────────────────────
   function vBracket(x,y1,y2,label,color='#FFD700',side=1){
     if(x==null||y1==null||y2==null||label==null)return;
-    const bx=x+side*18;
+    const bx=x+side*20;
     c.strokeStyle=color;c.lineWidth=1.5;
     c.beginPath();c.moveTo(bx,y1);c.lineTo(bx,y2);c.stroke();
     [y1,y2].forEach(ty=>{
       c.beginPath();c.moveTo(bx-5,ty);c.lineTo(bx+5,ty);c.stroke();
     });
-    const lx=bx+side*36;
-    // clamp so label stays on screen
-    const clampedX=Math.max(50,Math.min(W-50,lx));
-    pill(label,clampedX,(y1+y2)/2,color);
+    const lx=bx+side*38;
+    pill(label,lx,(y1+y2)/2,color);
   }
 
   const ls=kps[KP.L_SHOULDER],rs=kps[KP.R_SHOULDER];
@@ -823,40 +953,35 @@ function drawMeasOverlay(meas,c=ctx,W=oc.width){
   const rightEdge=rs?rs.x:meas.noseSX;
   vBracket(rightEdge+30,meas.crownSY,meas.floorSY,meas.heightCm+' cm','#FFD700',1);
 
-  // ── 2. SHOULDER WIDTH — silhouette edges if available, else joint ────────
+  // ── 2. SHOULDER WIDTH — label right ──────────────────────────────────────
   if(ls&&rs){
-    const shY=Math.min(ls.y,rs.y)-14;
+    const shY=Math.min(ls.y,rs.y)-10;
     if(meas.shoulderSil){
-      // Silhouette bracket (brighter white-blue = outer body edge)
       hBracket(meas.shoulderSil.leftX, meas.shoulderSil.rightX, shY,
-        meas.shoulderCm+' cm', '#7ec8e3');
-      // Small joint markers to show where keypoints are
-      c.save();
-      c.strokeStyle='rgba(126,200,227,0.4)';c.lineWidth=1;c.setLineDash([3,3]);
-      c.beginPath();c.moveTo(ls.x,shY-6);c.lineTo(ls.x,shY+6);c.stroke();
-      c.beginPath();c.moveTo(rs.x,shY-6);c.lineTo(rs.x,shY+6);c.stroke();
+        meas.shoulderCm+' cm','#7ec8e3','right');
+      // dashed joint markers
+      c.save();c.strokeStyle='rgba(126,200,227,0.35)';c.lineWidth=1;c.setLineDash([3,3]);
+      [ls.x,rs.x].forEach(x=>{c.beginPath();c.moveTo(x,shY-5);c.lineTo(x,shY+5);c.stroke();});
       c.setLineDash([]);c.restore();
     } else {
-      // Fallback: joint-to-joint
-      hBracket(ls.x,rs.x,shY,
-        meas.shoulderCm?meas.shoulderCm+' cm':null,'#7ec8e3');
+      hBracket(ls.x,rs.x,shY, meas.shoulderCm?meas.shoulderCm+' cm':null,'#7ec8e3','right');
     }
   }
 
-  // ── 3. HIP WIDTH — widest silhouette row in hip zone ─────────────────────
-  if(meas.hipSil){
-    const hipY=meas.hipSil.y??((lh&&rh)?Math.max(lh.y,rh.y)+18:0);
-    hBracket(meas.hipSil.leftX, meas.hipSil.rightX, hipY+14,
-      meas.hipCm+' cm','#ff9632');
-  } else if(lh&&rh){
-    hBracket(lh.x,rh.x,Math.max(lh.y,rh.y)+18,
-      meas.hipCm?meas.hipCm+' cm':null,'#ff9632');
-  }
-
-  // ── 3b. WAIST — narrowest silhouette between shoulders and hips ──────────
+  // ── 3. WAIST — label left ─────────────────────────────────────────────────
   if(meas.waistSil&&meas.waistScrY!=null){
     hBracket(meas.waistSil.leftX, meas.waistSil.rightX, meas.waistScrY,
-      meas.waistCm+' cm','#c8a4e8'); // purple = new silhouette-only measurement
+      meas.waistCm+' cm','#c8a4e8','left');
+  }
+
+  // ── 4. HIP WIDTH — label right ────────────────────────────────────────────
+  if(meas.hipSil){
+    const hipBY=(meas.hipSil.y??((lh&&rh)?Math.max(lh.y,rh.y):0))+14;
+    hBracket(meas.hipSil.leftX, meas.hipSil.rightX, hipBY,
+      meas.hipCm+' cm','#ff9632','right');
+  } else if(lh&&rh){
+    hBracket(lh.x,rh.x,Math.max(lh.y,rh.y)+18,
+      meas.hipCm?meas.hipCm+' cm':null,'#ff9632','right');
   }
 
   // ── 4. TORSO — vertical bracket on left of body ─────────────────────────
