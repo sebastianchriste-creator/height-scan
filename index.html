@@ -1063,11 +1063,17 @@ function calcMeas(pose, heightCm){
   if(waistCm && !baggyClothing) waistCm=+(waistCm*1.08).toFixed(1);
 
   // Torso: mid-shoulder to mid-hip
+  // Hard cap: torso / height tops out at ~32% anatomically (P1–P15 dataset).
+  // App readings above 32.5% of height are caused by MoveNet placing hip joints
+  // at the shirt hem rather than the actual joint (long tops, baggy clothing).
+  // Cap to height × 0.30 — midpoint of realistic range across all body types.
   let torsoCm=null;
   if(ls&&rs&&lh&&rh){
     const midSh={x:(ls.x+rs.x)/2,y:(ls.y+rs.y)/2};
     const midHip={x:(lh.x+rh.x)/2,y:(lh.y+rh.y)/2};
     torsoCm=pxToCm(distS(midSh,midHip));
+    if(torsoCm && torsoCm > heightCm*0.325)
+      torsoCm=+(heightCm*0.30).toFixed(1);
   }
 
   // Inseam: mid-hip to mid-ankle
