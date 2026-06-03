@@ -1717,12 +1717,16 @@ async function processBatchPhoto(file, heightCm){
     }
   }catch(e){}
 
-  URL.revokeObjectURL(url);
+  if(!pose){setScanSource(video);URL.revokeObjectURL(url);return{error:'No pose detected'};}
 
-  if(!pose){setScanSource(video);return{error:'No pose detected'};}
+  // Set canvas to full image dimensions so getCrop() returns scale=1 (no distortion)
+  // In batch mode we don't render to screen so canvas size only affects coordinate maths
+  oc.width=img.naturalWidth; oc.height=img.naturalHeight;
+
   let meas=null;
-  try{meas=calcMeas(pose,heightCm);}catch(e){setScanSource(video);return{error:e.message};}
-  setScanSource(video); // reset AFTER calcMeas so getCrop() still sees image dimensions
+  try{meas=calcMeas(pose,heightCm);}catch(e){setScanSource(video);URL.revokeObjectURL(url);return{error:e.message};}
+  setScanSource(video);
+  URL.revokeObjectURL(url);
   if(!meas) return{error:'Could not compute measurements'};
 
   return {
