@@ -1,0 +1,1693 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <meta name="mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <title>Body Scan · MediaPipe</title>
+  <style>
+    *{margin:0;padding:0;box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+    html,body{width:100%;height:100%;background:#0d0d0d;overflow:hidden;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;color:#eee}
+
+    /* ── SCREENS ── */
+    .screen{position:absolute;inset:0;display:none;flex-direction:column;align-items:center;justify-content:center}
+    .screen.active{display:flex}
+
+    /* ── INTRO SCREEN ── */
+    #screen-intro{background:linear-gradient(160deg,#0d0d0d 0%,#1a1a1a 100%);padding:32px 24px;gap:0}
+    .intro-logo{font-size:13px;font-weight:700;letter-spacing:.18em;color:rgba(255,255,255,0.3);text-transform:uppercase;margin-bottom:40px}
+    .intro-title{font-size:32px;font-weight:700;text-align:center;line-height:1.15;margin-bottom:10px}
+    .intro-title span{color:#7ec8e3}
+    .intro-sub{font-size:15px;color:rgba(255,255,255,0.45);text-align:center;max-width:280px;line-height:1.55;margin-bottom:48px}
+
+    .height-card{width:100%;max-width:340px;background:rgba(255,255,255,0.05);border:1px solid rgba(255,255,255,0.1);border-radius:20px;padding:24px;margin-bottom:28px}
+    .height-card-label{font-size:11px;font-weight:700;letter-spacing:.12em;text-transform:uppercase;color:rgba(255,255,255,0.4);margin-bottom:16px}
+
+    .unit-toggle{display:flex;gap:6px;margin-bottom:20px}
+    .unit-btn{flex:1;padding:8px;border-radius:10px;border:1px solid rgba(255,255,255,0.15);background:transparent;color:rgba(255,255,255,0.4);font:600 13px -apple-system,sans-serif;cursor:pointer;transition:all .2s}
+    .unit-btn.active{background:rgba(126,200,227,0.15);border-color:#7ec8e3;color:#7ec8e3}
+
+    /* cm input */
+    .cm-input-wrap{display:flex;align-items:baseline;gap:10px;justify-content:center}
+    .cm-input{background:transparent;border:none;border-bottom:2px solid rgba(255,255,255,0.2);color:#fff;font-size:52px;font-weight:300;width:140px;text-align:center;outline:none;padding:4px 0;transition:border-color .2s}
+    .cm-input:focus{border-bottom-color:#7ec8e3}
+    .cm-unit-lbl{font-size:20px;color:rgba(255,255,255,0.4);font-weight:300}
+
+    /* ft/in input */
+    .ftin-wrap{display:flex;align-items:baseline;gap:6px;justify-content:center}
+    .ftin-input{background:transparent;border:none;border-bottom:2px solid rgba(255,255,255,0.2);color:#fff;font-size:42px;font-weight:300;text-align:center;outline:none;padding:4px 0;transition:border-color .2s}
+    .ftin-input:focus{border-bottom-color:#7ec8e3}
+    .ftin-input.ft{width:70px}
+    .ftin-input.inch{width:80px}
+    .ftin-lbl{font-size:16px;color:rgba(255,255,255,0.4);font-weight:300}
+
+    /* tip */
+    .height-tip{font-size:11px;color:rgba(255,255,255,0.3);text-align:center;margin-top:14px}
+
+    .btn-primary{
+      width:100%;max-width:340px;padding:17px;border-radius:16px;border:none;
+      background:linear-gradient(135deg,#7ec8e3,#5ba8c4);
+      color:#0d0d0d;font-size:16px;font-weight:700;letter-spacing:.02em;cursor:pointer;
+      transition:opacity .2s,transform .1s;
+    }
+    .btn-primary:active{transform:scale(0.98);opacity:.9}
+    .btn-primary:disabled{opacity:.35;cursor:default}
+
+    .btn-photo{
+      width:100%;max-width:340px;padding:13px;border-radius:16px;
+      background:transparent;border:1px solid rgba(255,255,255,0.18);
+      color:rgba(255,255,255,0.55);font-size:14px;font-weight:600;cursor:pointer;
+      margin-top:10px;transition:opacity .2s;
+    }
+    .btn-photo:disabled{opacity:.25;cursor:default}
+    .btn-photo:not(:disabled):hover{border-color:rgba(255,255,255,0.35);color:#fff}
+
+    /* ── SCAN SCREEN ── */
+    #screen-scan{background:#000;padding:0}
+    #video{position:absolute;inset:0;width:100%;height:100%;object-fit:cover}
+    #oc{position:absolute;inset:0;width:100%;height:100%}
+
+    /* Instructions bar */
+    #instr{
+      position:absolute;top:0;left:0;right:0;
+      padding:max(16px,env(safe-area-inset-top)) 16px 14px;
+      background:linear-gradient(to bottom,rgba(0,0,0,0.7) 0%,transparent 100%);
+      text-align:center;
+    }
+    #instr-text{font-size:14px;font-weight:600;color:#fff;opacity:0.9}
+    #instr-sub{font-size:12px;color:rgba(255,255,255,0.5);margin-top:3px}
+
+    /* Stability ring */
+    #stab-ring{
+      position:absolute;bottom:0;left:50%;transform:translateX(-50%);
+      width:72px;height:72px;
+    }
+    #stab-ring svg{width:100%;height:100%;transform:rotate(-90deg)}
+    #stab-track{fill:none;stroke:rgba(255,255,255,0.1);stroke-width:5}
+    #stab-fill{fill:none;stroke:#7ec8e3;stroke-width:5;stroke-linecap:round;
+               stroke-dasharray:201;stroke-dashoffset:201;transition:stroke-dashoffset .12s linear}
+    #stab-icon{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;font-size:26px}
+
+    /* Back button */
+    #btn-back{
+      position:absolute;top:max(16px,env(safe-area-inset-top));left:14px;
+      background:rgba(0,0,0,0.55);border:1px solid rgba(255,255,255,0.2);
+      color:#fff;font-size:12px;font-weight:600;padding:7px 14px;border-radius:20px;cursor:pointer;
+    }
+
+    /* Framing error */
+    #framing-err{
+      position:absolute;bottom:0;left:0;right:0;
+      padding:12px 20px;background:rgba(220,60,40,0.9);
+      font-size:13px;font-weight:600;text-align:center;color:#fff;
+      display:none;
+    }
+    #framing-err.show{display:block}
+
+    /* ── RESULTS SCREEN ── */
+    #screen-results{background:#0d0d0d;flex-direction:column;align-items:stretch;justify-content:flex-start;overflow-y:auto}
+    .results-header{padding:max(24px,env(safe-area-inset-top)) 20px 20px;background:linear-gradient(to bottom,#1a1a1a,#0d0d0d)}
+    .results-title{font-size:22px;font-weight:700;margin-bottom:4px}
+    .results-sub{font-size:13px;color:rgba(255,255,255,0.4)}
+
+    .results-preview{width:100%;height:260px;object-fit:cover;display:block}
+    .results-preview-wrap{position:relative;width:100%;height:260px;overflow:hidden}
+    .results-preview-wrap canvas{width:100%;height:100%}
+
+    .meas-grid{padding:20px;display:grid;grid-template-columns:1fr 1fr;gap:12px}
+    .meas-card{background:rgba(255,255,255,0.05);border:1px solid rgba(255,255,255,0.08);border-radius:14px;padding:16px}
+    .meas-card.highlight{background:rgba(126,200,227,0.1);border-color:rgba(126,200,227,0.3)}
+    .meas-card.full{grid-column:span 2}
+    .meas-lbl{font-size:11px;font-weight:600;letter-spacing:.08em;text-transform:uppercase;color:rgba(255,255,255,0.4);margin-bottom:6px}
+    .meas-val{font-size:26px;font-weight:700;color:#fff}
+    .meas-val span{font-size:14px;font-weight:400;color:rgba(255,255,255,0.5);margin-left:2px}
+    .meas-confidence{font-size:10px;color:rgba(255,255,255,0.3);margin-top:4px}
+
+    .results-actions{padding:16px 20px max(24px,env(safe-area-inset-bottom));display:flex;gap:10px}
+    .btn-secondary{
+      flex:1;padding:14px;border-radius:14px;
+      background:rgba(255,255,255,0.08);border:1px solid rgba(255,255,255,0.15);
+      color:#fff;font-size:14px;font-weight:600;cursor:pointer;
+    }
+    .btn-share{
+      flex:1;padding:14px;border-radius:14px;border:none;
+      background:linear-gradient(135deg,#7ec8e3,#5ba8c4);
+      color:#0d0d0d;font-size:14px;font-weight:700;cursor:pointer;
+    }
+
+    /* note about confidence */
+    .results-note{padding:0 20px 16px;font-size:11px;color:rgba(255,255,255,0.25);line-height:1.5;text-align:center}
+
+    /* ── LAST CAPTURE BUTTON (on scan screen) ── */
+    #btn-last{
+      position:absolute;left:14px;
+      background:rgba(0,0,0,0.65);border:1px solid rgba(255,255,255,0.25);
+      color:#eee;font-size:11px;font-weight:600;padding:8px 14px;border-radius:20px;
+      display:none;cursor:pointer;letter-spacing:.03em;
+    }
+    #btn-last.show{display:block}
+
+    /* ── FULLSCREEN IMAGE VIEWER ── */
+    #img-viewer{
+      position:fixed;inset:0;background:rgba(0,0,0,0.95);z-index:100;
+      display:none;flex-direction:column;align-items:center;justify-content:center;
+    }
+    #img-viewer.show{display:flex}
+    #img-viewer img{max-width:100%;max-height:85%;object-fit:contain;border-radius:4px}
+    #img-viewer-close{
+      position:absolute;top:max(16px,env(safe-area-inset-top));right:16px;
+      background:rgba(255,255,255,0.12);border:none;color:#fff;
+      font-size:22px;width:40px;height:40px;border-radius:50%;cursor:pointer;
+      display:flex;align-items:center;justify-content:center;
+    }
+
+    /* make preview canvas tappable */
+    .results-preview-wrap{cursor:pointer}
+    .results-preview-wrap::after{
+      content:'Tap to enlarge';
+      position:absolute;bottom:8px;right:10px;
+      font-size:10px;color:rgba(255,255,255,0.4);
+      font-family:-apple-system,sans-serif;pointer-events:none;
+    }
+    .results-preview-wrap{position:relative}
+  </style>
+</head>
+<body>
+
+<!-- ── SCREEN 1: HEIGHT INPUT ── -->
+<div id="screen-intro" class="screen active">
+  <div class="intro-logo">Body Scan · <span style="color:#7ec8e3">MediaPipe</span></div>
+  <h1 class="intro-title">Your body,<br>your <span>measurements</span></h1>
+  <p class="intro-sub">Enter your height and we'll calculate everything else from your photo.</p>
+
+  <div class="height-card">
+    <div class="height-card-label">Your height</div>
+    <div class="unit-toggle">
+      <button class="unit-btn active" id="btn-cm" onclick="setUnit('cm')">cm</button>
+      <button class="unit-btn" id="btn-ftin" onclick="setUnit('ftin')">ft / in</button>
+    </div>
+
+    <div id="cm-wrap" class="cm-input-wrap">
+      <input class="cm-input" id="cm-val" type="number" inputmode="numeric" min="100" max="250" placeholder="175" value="">
+      <span class="cm-unit-lbl">cm</span>
+    </div>
+
+    <div id="ftin-wrap" class="ftin-wrap" style="display:none">
+      <input class="ftin-input ft" id="ft-val" type="number" inputmode="numeric" min="3" max="8" placeholder="5">
+      <span class="ftin-lbl">ft</span>
+      <input class="ftin-input inch" id="in-val" type="number" inputmode="numeric" min="0" max="11" placeholder="10">
+      <span class="ftin-lbl">in</span>
+    </div>
+
+    <p class="height-tip">Used only as a reference scale — not stored.</p>
+  </div>
+
+  <button class="btn-primary" id="btn-start" onclick="showInstructions()" disabled>
+    Next →
+  </button>
+
+  <button onclick="show('screen-batch')" style="margin-top:10px;background:transparent;border:none;color:rgba(255,255,255,0.3);font-size:12px;font-weight:600;cursor:pointer;letter-spacing:.05em">
+    🧪 Batch Test Mode
+  </button>
+
+  <input type="file" id="photo-input" accept="image/*" style="display:none" onchange="handlePhotoUpload(event)">
+</div>
+
+<!-- ── SCREEN: BATCH TEST ── -->
+<div id="screen-batch" class="screen" style="flex-direction:column;align-items:stretch;justify-content:flex-start;overflow-y:auto;background:#0d0d0d">
+
+  <!-- Setup panel -->
+  <div id="batch-setup" style="padding:max(24px,env(safe-area-inset-top)) 20px 20px">
+    <div style="display:flex;align-items:center;gap:12px;margin-bottom:20px">
+      <button onclick="show('screen-intro')" style="background:rgba(255,255,255,0.08);border:1px solid rgba(255,255,255,0.15);color:#fff;font-size:13px;font-weight:600;padding:8px 14px;border-radius:20px;cursor:pointer">← Back</button>
+      <h2 style="font-size:20px;font-weight:700">Batch Test</h2>
+      <span style="font-size:11px;background:rgba(126,200,227,0.15);border:1px solid rgba(126,200,227,0.3);color:#7ec8e3;padding:3px 8px;border-radius:20px;font-weight:700">MediaPipe</span>
+    </div>
+
+    <div style="background:rgba(255,255,255,0.04);border:1px solid rgba(255,255,255,0.1);border-radius:14px;padding:16px;margin-bottom:16px;font-size:13px;color:rgba(255,255,255,0.5);line-height:1.6">
+      Select multiple photos, enter a height per photo, then run analysis. Results export as CSV.
+    </div>
+
+    <!-- File picker -->
+    <input type="file" id="batch-file-input" multiple accept="image/*" style="display:none" onchange="handleBatchFiles(event)">
+    <button onclick="document.getElementById('batch-file-input').value='';document.getElementById('batch-file-input').click()"
+      style="width:100%;padding:14px;border-radius:14px;border:1px dashed rgba(126,200,227,0.4);background:rgba(126,200,227,0.05);color:#7ec8e3;font-size:14px;font-weight:600;cursor:pointer;margin-bottom:16px">
+      📂 Select Photos
+    </button>
+
+    <!-- File list with height inputs -->
+    <div id="batch-file-list" style="display:flex;flex-direction:column;gap:8px;margin-bottom:16px"></div>
+
+    <!-- Run button -->
+    <button id="btn-run-batch" onclick="runBatchAnalysis()"
+      style="width:100%;padding:15px;border-radius:14px;border:none;background:linear-gradient(135deg,#7ec8e3,#5ba8c4);color:#0d0d0d;font-size:15px;font-weight:700;cursor:pointer;display:none">
+      ▶ Run Analysis
+    </button>
+
+    <!-- Progress -->
+    <div id="batch-progress" style="display:none;margin-top:16px">
+      <div style="font-size:13px;color:rgba(255,255,255,0.6);margin-bottom:8px" id="batch-progress-text">Processing…</div>
+      <div style="height:4px;background:rgba(255,255,255,0.1);border-radius:2px;overflow:hidden">
+        <div id="batch-progress-bar" style="height:100%;background:#7ec8e3;width:0%;transition:width .3s"></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Results panel -->
+  <div id="batch-results" style="display:none;padding:0 20px max(24px,env(safe-area-inset-bottom))">
+    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px">
+      <h3 style="font-size:16px;font-weight:700">Results</h3>
+      <div style="display:flex;gap:8px">
+        <button onclick="exportBatchCSV()" style="padding:8px 14px;border-radius:20px;border:none;background:#7ec8e3;color:#0d0d0d;font-size:12px;font-weight:700;cursor:pointer">⬇ CSV</button>
+        <button onclick="resetBatch()" style="padding:8px 14px;border-radius:20px;border:1px solid rgba(255,255,255,0.2);background:transparent;color:#fff;font-size:12px;font-weight:600;cursor:pointer">New Test</button>
+      </div>
+    </div>
+
+    <!-- Scrollable results table -->
+    <div style="overflow-x:auto;border-radius:12px;border:1px solid rgba(255,255,255,0.1)">
+      <table id="batch-table" style="width:100%;border-collapse:collapse;font-size:12px;font-family:monospace">
+        <thead>
+          <tr style="background:rgba(255,255,255,0.06)">
+            <th style="padding:10px 8px;text-align:left;color:rgba(255,255,255,0.5);font-weight:600;white-space:nowrap">Photo</th>
+            <th style="padding:10px 8px;color:rgba(255,255,255,0.5);font-weight:600">H</th>
+            <th style="padding:10px 8px;color:rgba(255,255,255,0.5);font-weight:600">Shoulder</th>
+            <th style="padding:10px 8px;color:rgba(255,255,255,0.5);font-weight:600">Waist</th>
+            <th style="padding:10px 8px;color:rgba(255,255,255,0.5);font-weight:600">Hip</th>
+            <th style="padding:10px 8px;color:rgba(255,255,255,0.5);font-weight:600">Torso</th>
+            <th style="padding:10px 8px;color:rgba(255,255,255,0.5);font-weight:600">Inseam</th>
+            <th style="padding:10px 8px;color:rgba(255,255,255,0.5);font-weight:600">Arm</th>
+            <th style="padding:10px 8px;color:rgba(255,255,255,0.5);font-weight:600">⚠</th>
+          </tr>
+        </thead>
+        <tbody id="batch-tbody"></tbody>
+      </table>
+    </div>
+  </div>
+</div>
+
+<!-- ── SCREEN 1.5: POSTURE INSTRUCTIONS ── -->
+<div id="screen-instructions" class="screen">
+  <div style="width:100%;max-width:400px;padding:28px 24px;display:flex;flex-direction:column;align-items:center;gap:0;overflow-y:auto;max-height:100%">
+
+    <div style="font-size:13px;font-weight:700;letter-spacing:.15em;color:rgba(255,255,255,0.3);text-transform:uppercase;margin-bottom:6px">Get ready</div>
+    <h2 style="font-size:22px;font-weight:700;text-align:center;margin-bottom:20px">Stand like this</h2>
+
+    <!-- SVG posture illustration -->
+    <svg viewBox="0 0 200 340" width="160" height="272" style="margin-bottom:24px;flex-shrink:0">
+      <!-- Background glow -->
+      <ellipse cx="100" cy="320" rx="50" ry="8" fill="rgba(126,200,227,0.08)"/>
+
+      <!-- Person outline -->
+      <!-- Head -->
+      <circle cx="100" cy="36" r="22" fill="none" stroke="#7ec8e3" stroke-width="2.5"/>
+      <!-- Neck -->
+      <line x1="100" y1="58" x2="100" y2="72" stroke="#7ec8e3" stroke-width="2.5"/>
+      <!-- Torso -->
+      <path d="M68,72 L132,72 L126,168 L74,168 Z" fill="rgba(126,200,227,0.08)" stroke="#7ec8e3" stroke-width="2.5" stroke-linejoin="round"/>
+      <!-- Left arm (person's left = image right) — slightly angled out -->
+      <line x1="132" y1="80" x2="155" y2="148" stroke="#7ec8e3" stroke-width="2.5" stroke-linecap="round"/>
+      <circle cx="155" cy="151" r="4" fill="#7ec8e3"/>
+      <!-- Right arm -->
+      <line x1="68" y1="80" x2="45" y2="148" stroke="#7ec8e3" stroke-width="2.5" stroke-linecap="round"/>
+      <circle cx="45" cy="151" r="4" fill="#7ec8e3"/>
+      <!-- Left leg -->
+      <line x1="113" y1="168" x2="116" y2="300" stroke="#7ec8e3" stroke-width="2.5" stroke-linecap="round"/>
+      <!-- Right leg -->
+      <line x1="87" y1="168" x2="84" y2="300" stroke="#7ec8e3" stroke-width="2.5" stroke-linecap="round"/>
+      <!-- Feet -->
+      <line x1="106" y1="300" x2="126" y2="308" stroke="#7ec8e3" stroke-width="2.5" stroke-linecap="round"/>
+      <line x1="74" y1="300" x2="94" y2="308" stroke="#7ec8e3" stroke-width="2.5" stroke-linecap="round"/>
+
+      <!-- Annotation: arms out -->
+      <path d="M162,120 Q175,115 178,106" fill="none" stroke="rgba(237,217,78,0.7)" stroke-width="1.5" stroke-dasharray="3,2"/>
+      <text x="182" y="104" fill="#EDD94E" font-size="9" font-family="monospace" text-anchor="start">slightly</text>
+      <text x="182" y="115" fill="#EDD94E" font-size="9" font-family="monospace" text-anchor="start">out</text>
+
+      <!-- Annotation: feet together -->
+      <path d="M128,316 Q138,322 138,328" fill="none" stroke="rgba(76,175,80,0.7)" stroke-width="1.5" stroke-dasharray="3,2"/>
+      <text x="141" y="331" fill="#4CAF50" font-size="9" font-family="monospace" text-anchor="start">together</text>
+
+      <!-- Annotation: face camera -->
+      <path d="M126,30 Q140,20 148,22" fill="none" stroke="rgba(200,164,232,0.7)" stroke-width="1.5" stroke-dasharray="3,2"/>
+      <text x="150" y="21" fill="#c8a4e8" font-size="9" font-family="monospace" text-anchor="start">face</text>
+      <text x="150" y="32" fill="#c8a4e8" font-size="9" font-family="monospace" text-anchor="start">camera</text>
+
+      <!-- Checkmark centre -->
+      <circle cx="100" cy="190" r="0" fill="none"/>
+    </svg>
+
+    <!-- Tips list -->
+    <div style="width:100%;display:flex;flex-direction:column;gap:10px;margin-bottom:28px">
+      <div style="display:flex;align-items:flex-start;gap:12px">
+        <span style="font-size:16px;flex-shrink:0">👕</span>
+        <span style="font-size:13px;color:rgba(255,255,255,0.75);line-height:1.5"><strong style="color:#fff">Fitted clothing</strong> — t-shirt or fitted shirt and trousers. Avoid hoodies, open shirts or baggy tops.</span>
+      </div>
+      <div style="display:flex;align-items:flex-start;gap:12px">
+        <span style="font-size:16px;flex-shrink:0">🎨</span>
+        <span style="font-size:13px;color:rgba(255,255,255,0.75);line-height:1.5"><strong style="color:#fff">Contrast with background</strong> — wear something darker or lighter than the wall behind you.</span>
+      </div>
+      <div style="display:flex;align-items:flex-start;gap:12px">
+        <span style="font-size:16px;flex-shrink:0">📏</span>
+        <span style="font-size:13px;color:rgba(255,255,255,0.75);line-height:1.5"><strong style="color:#fff">Stand 2–3 m away</strong> — full body head to toe must be visible.</span>
+      </div>
+      <div style="display:flex;align-items:flex-start;gap:12px">
+        <span style="font-size:16px;flex-shrink:0">💡</span>
+        <span style="font-size:13px;color:rgba(255,255,255,0.75);line-height:1.5"><strong style="color:#fff">Good lighting</strong> — avoid strong backlighting or shadows across the body.</span>
+      </div>
+    </div>
+
+    <button class="btn-primary" style="width:100%" onclick="startScan()">Start Scan</button>
+    <button class="btn-photo" style="width:100%;margin-top:10px" onclick="triggerPhotoUpload()">📂 Use existing photo</button>
+  </div>
+</div>
+
+<!-- ── SCREEN 2: SCAN ── -->
+<div id="screen-scan" class="screen">
+  <video id="video" autoplay playsinline muted></video>
+  <canvas id="oc"></canvas>
+
+  <div id="instr">
+    <div id="instr-text">Stand 2–3 m from the camera</div>
+    <div id="instr-sub" id="instr-sub">Show your full body head to toe</div>
+  </div>
+
+  <button id="btn-back" onclick="goBack()">← Back</button>
+
+  <div id="stab-ring">
+    <svg viewBox="0 0 72 72">
+      <circle id="stab-track" cx="36" cy="36" r="32"/>
+      <circle id="stab-fill"  cx="36" cy="36" r="32"/>
+    </svg>
+    <div id="stab-icon">🧍</div>
+  </div>
+
+  <div id="framing-err"></div>
+  <div id="baggy-warn" style="display:none;position:absolute;top:0;left:0;right:0;padding:10px 16px;background:rgba(237,180,50,0.92);font-size:12px;font-weight:600;color:#000;text-align:center;">
+    ⚠ Bulky clothing detected — measurements may reflect clothing, not body shape
+  </div>
+  <button id="btn-last" onclick="showLastCapture()">📷 Last</button>
+</div>
+
+<!-- ── FULLSCREEN IMAGE VIEWER ── -->
+<div id="img-viewer">
+  <button id="img-viewer-close" onclick="closeViewer()">✕</button>
+  <img id="img-viewer-img" src="" alt="capture">
+</div>
+
+<!-- ── SCREEN 3: RESULTS ── -->
+<div id="screen-results" class="screen">
+  <div class="results-header">
+    <div class="results-title">Your Measurements</div>
+    <div class="results-sub" id="res-sub">Based on your height</div>
+  </div>
+
+  <div class="results-preview-wrap" onclick="openViewer()">
+    <canvas id="preview-canvas"></canvas>
+  </div>
+
+  <div class="meas-grid" id="meas-grid"></div>
+
+  <div id="baggy-results-warn" style="display:none;margin:0 20px 12px;padding:10px 14px;background:rgba(237,180,50,0.15);border:1px solid rgba(237,180,50,0.4);border-radius:10px;font-size:12px;color:#EDB432;text-align:center;">
+    ⚠ Bulky clothing detected — measurements may reflect clothing rather than body shape. For best accuracy wear fitted clothing.
+  </div>
+  <p class="results-note">Measurements are estimates from a 2D photo. Accuracy improves when standing straight, facing the camera, arms slightly away from body.</p>
+
+  <div class="results-actions">
+    <button class="btn-secondary" onclick="rescan()">Rescan</button>
+    <button class="btn-share" onclick="shareResults()">Save / Share</button>
+  </div>
+</div>
+
+<!-- ── MediaPipe Tasks Vision (ES module) ── -->
+<script type="module">
+import {PoseLandmarker, FilesetResolver}
+  from "https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.14/vision_bundle.mjs";
+
+// ── POSE DETECTION (MediaPipe Pose Landmarker) ──────────────────────────────
+let detector=null, latestPose=null, isDetecting=false;
+
+async function loadDetector(){
+  const vision=await FilesetResolver.forVisionTasks(
+    "https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.14/wasm"
+  );
+  detector=await PoseLandmarker.createFromOptions(vision,{
+    baseOptions:{
+      modelAssetPath:
+        "https://storage.googleapis.com/mediapipe-models/pose_landmarker/pose_landmarker_lite/float16/1/pose_landmarker_lite.task",
+      delegate:"GPU"
+    },
+    runningMode:"IMAGE",
+    numPoses:1
+  });
+}
+
+// ── MediaPipe 33-landmark keypoint indices ──────────────────────────────────
+// MediaPipe layout:
+//  0=nose  1=l_eye_inner  2=l_eye  3=l_eye_outer  4=r_eye_inner  5=r_eye
+//  6=r_eye_outer  7=l_ear  8=r_ear  9=mouth_l  10=mouth_r
+//  11=l_shoulder  12=r_shoulder  13=l_elbow  14=r_elbow
+//  15=l_wrist  16=r_wrist  17=l_pinky  18=r_pinky
+//  19=l_index  20=r_index  21=l_thumb  22=r_thumb
+//  23=l_hip  24=r_hip  25=l_knee  26=r_knee
+//  27=l_ankle  28=r_ankle  29=l_heel  30=r_heel
+//  31=l_foot_index  32=r_foot_index
+const KP={
+  NOSE:0,
+  L_EYE:2,  R_EYE:5,
+  L_EAR:7,  R_EAR:8,
+  L_SHOULDER:11, R_SHOULDER:12,
+  L_ELBOW:13,    R_ELBOW:14,
+  L_WRIST:15,    R_WRIST:16,
+  L_HIP:23,      R_HIP:24,
+  L_KNEE:25,     R_KNEE:26,
+  L_ANKLE:27,    R_ANKLE:28,
+  L_HEEL:29,     R_HEEL:30,
+  L_FOOT:31,     R_FOOT:32,
+};
+const MIN_SCORE=0.5; // MediaPipe visibility is generally higher — use 0.5 vs MoveNet 0.3
+
+// Convert MediaPipe PoseLandmarkerResult → MoveNet-compatible pose object.
+// MediaPipe returns normalized [0,1] coordinates; we scale to pixel space.
+function mpToPose(result, srcW, srcH){
+  if(!result||!result.landmarks||result.landmarks.length===0)return null;
+  const lms=result.landmarks[0];
+  return{
+    keypoints:lms.map((lm,i)=>({
+      x:lm.x*srcW,
+      y:lm.y*srcH,
+      score:lm.visibility??0,
+      name:String(i)
+    }))
+  };
+}
+
+async function runPose(){
+  if(isDetecting||!detector||video.readyState<2)return;
+  isDetecting=true;
+  try{
+    const result=detector.detect(video);
+    latestPose=mpToPose(result, video.videoWidth, video.videoHeight);
+  }catch(_){}
+  isDetecting=false;
+}
+
+// ── STATE ─────────────────────────────────────────────────────────────────────
+let knownHeightCm=0;
+let currentUnit='cm';
+let rafId=null;
+let stableCount=0;
+let heightHist=[];
+const STABLE_FRAMES=22, STABLE_TOL_CM=2.5;
+let hasAutoCaptured=false;
+let lastMeas=null;
+let capturedImageBlob=null;
+let lastCapturedBlob=null;
+let lastCapturedDataURL=null;
+
+// ── SCAN SOURCE ───────────────────────────────────────────────────────────────
+let scanSource=null;
+let scanSrcW=0, scanSrcH=0;
+function setScanSource(el){
+  scanSource=el;
+  scanSrcW=el.videoWidth||el.naturalWidth||0;
+  scanSrcH=el.videoHeight||el.naturalHeight||0;
+}
+
+const video=document.getElementById('video');
+const oc=document.getElementById('oc');
+const ctx=oc.getContext('2d');
+
+// ── HEIGHT INPUT ──────────────────────────────────────────────────────────────
+function setUnit(u){
+  currentUnit=u;
+  document.getElementById('btn-cm').classList.toggle('active',u==='cm');
+  document.getElementById('btn-ftin').classList.toggle('active',u==='ftin');
+  document.getElementById('cm-wrap').style.display=u==='cm'?'flex':'none';
+  document.getElementById('ftin-wrap').style.display=u==='ftin'?'flex':'none';
+  validateHeight();
+}
+
+function getHeightCm(){
+  if(currentUnit==='cm'){
+    const v=parseFloat(document.getElementById('cm-val').value);
+    return isNaN(v)?0:v;
+  }else{
+    const ft=parseFloat(document.getElementById('ft-val').value)||0;
+    const inch=parseFloat(document.getElementById('in-val').value)||0;
+    return Math.round((ft*12+inch)*2.54);
+  }
+}
+
+function validateHeight(){
+  const h=getHeightCm();
+  const ok=h>=100&&h<=250;
+  document.getElementById('btn-start').disabled=!ok;
+}
+
+function showInstructions(){
+  knownHeightCm=getHeightCm();
+  if(knownHeightCm<100||knownHeightCm>250)return;
+  show('screen-instructions');
+}
+
+function triggerPhotoUpload(){
+  knownHeightCm=getHeightCm();
+  document.getElementById('photo-input').value='';
+  document.getElementById('photo-input').click();
+}
+
+async function handlePhotoUpload(evt){
+  const file=evt.target.files[0];
+  if(!file)return;
+  knownHeightCm=getHeightCm();
+  if(knownHeightCm<100||knownHeightCm>250){
+    alert('Please enter your height (100–250 cm) before uploading a photo.');
+    show('screen-intro');
+    return;
+  }
+
+  const url=URL.createObjectURL(file);
+  const img=new Image();
+  await new Promise((res,rej)=>{img.onload=res;img.onerror=rej;img.src=url;});
+
+  show('screen-scan');
+  document.getElementById('instr-text').textContent='Analysing photo…';
+  document.getElementById('instr-sub').textContent='';
+  document.getElementById('stab-ring').style.display='none';
+  document.getElementById('btn-back').style.display='none';
+
+  if(!detector){
+    document.getElementById('instr-text').textContent='Loading pose model…';
+    await loadDetector();
+  }
+
+  setScanSource(img);
+
+  const MAX_W=1080;
+  const photoW=Math.min(img.naturalWidth,MAX_W);
+  const photoH=Math.round(photoW*img.naturalHeight/img.naturalWidth);
+  oc.width=photoW;oc.height=photoH;
+  const cp=getCrop();
+
+  ctx.clearRect(0,0,oc.width,oc.height);
+  if(cp)ctx.drawImage(img,cp.sx,cp.sy,cp.sw,cp.sh,0,0,oc.width,oc.height);
+
+  // 3× averaging (MediaPipe WASM is largely deterministic on GPU delegate,
+  // but CPU fallback may vary slightly — average for consistency).
+  let pose=null;
+  try{
+    const runs=[];
+    for(let i=0;i<3;i++){
+      const result=detector.detect(img);
+      const p=mpToPose(result, img.naturalWidth, img.naturalHeight);
+      if(p)runs.push(p);
+    }
+    if(runs.length>0){
+      const avg=JSON.parse(JSON.stringify(runs[0]));
+      avg.keypoints=avg.keypoints.map((kp,ki)=>({
+        ...kp,
+        x:runs.reduce((s,r)=>s+r.keypoints[ki].x,0)/runs.length,
+        y:runs.reduce((s,r)=>s+r.keypoints[ki].y,0)/runs.length,
+        score:runs.reduce((s,r)=>s+r.keypoints[ki].score,0)/runs.length,
+      }));
+      pose=avg;
+    }
+  }catch(e){console.error(e);}
+
+  if(!pose){
+    alert('No person detected in this photo. Try a full-body shot with good lighting.');
+    show('screen-intro');
+    document.getElementById('stab-ring').style.display='';
+    document.getElementById('btn-back').style.display='';
+    setScanSource(video);
+    return;
+  }
+
+  let meas=null;
+  try{
+    meas=calcMeas(pose,knownHeightCm);
+  }catch(e){
+    console.error('calcMeas error:',e);
+    alert('Measurement error: '+e.message);
+  }
+  lastMeas=meas?{...meas}:null;
+
+  try{
+    if(pose&&cp)drawSkeleton(pose,cp,ctx);
+    if(meas)drawMeasOverlay(meas,ctx,oc.width);
+  }catch(e){console.error('draw error:',e);}
+
+  const cap=document.createElement('canvas');
+  cap.width=oc.width;cap.height=oc.height;
+  const cc=cap.getContext('2d');
+  cc.drawImage(oc,0,0);
+  drawInfoBar(cc,meas||{heightCm:knownHeightCm},cap.width,cap.height);
+
+  lastCapturedDataURL=cap.toDataURL('image/jpeg',0.92);
+  cap.toBlob(blob=>{capturedImageBlob=blob;lastCapturedBlob=blob;},'image/jpeg',0.92);
+
+  setScanSource(video);
+  document.getElementById('stab-ring').style.display='';
+  document.getElementById('btn-back').style.display='';
+
+  if(meas)showResults(meas,cap);
+  else{
+    alert('Could not compute measurements from this photo. Make sure the full body (head to feet) is visible.');
+    show('screen-intro');
+  }
+  URL.revokeObjectURL(url);
+}
+
+['cm-val','ft-val','in-val'].forEach(id=>{
+  const el=document.getElementById(id);
+  if(el)el.addEventListener('input',validateHeight);
+});
+
+// ── NAVIGATION ────────────────────────────────────────────────────────────────
+function show(screenId){
+  document.querySelectorAll('.screen').forEach(s=>s.classList.remove('active'));
+  document.getElementById(screenId).classList.add('active');
+}
+
+function goBack(){
+  stopScan();
+  show('screen-intro');
+}
+
+function rescan(){
+  show('screen-intro');
+}
+
+// ── LAST CAPTURE VIEWER ────────────────────────────────────────────────────────
+function showLastCapture(){
+  if(!lastCapturedDataURL)return;
+  document.getElementById('img-viewer-img').src=lastCapturedDataURL;
+  document.getElementById('img-viewer').classList.add('show');
+}
+function openViewer(){
+  if(!lastCapturedDataURL)return;
+  document.getElementById('img-viewer-img').src=lastCapturedDataURL;
+  document.getElementById('img-viewer').classList.add('show');
+}
+function closeViewer(){
+  document.getElementById('img-viewer').classList.remove('show');
+}
+function updateLastBtn(){
+  const scanActive=document.getElementById('screen-scan').classList.contains('active');
+  const viewerOpen=document.getElementById('img-viewer').classList.contains('show');
+  document.getElementById('btn-last').classList.toggle('show',
+    !!lastCapturedBlob&&scanActive&&!viewerOpen);
+}
+
+// ── START SCAN ────────────────────────────────────────────────────────────────
+async function startScan(){
+  knownHeightCm=getHeightCm();
+  if(knownHeightCm<100||knownHeightCm>250)return;
+
+  show('screen-scan');
+
+  try{
+    const stream=await navigator.mediaDevices.getUserMedia({
+      video:{facingMode:'environment',width:{ideal:1920},height:{ideal:1080}},
+      audio:false
+    });
+    video.srcObject=stream;
+    await video.play();
+  }catch(e){
+    alert('Camera access needed: '+e.message);
+    show('screen-intro');
+    return;
+  }
+
+  oc.width=window.innerWidth;
+  oc.height=window.innerHeight;
+
+  positionStabRing();
+  updateLastBtn();
+
+  if(!detector){
+    document.getElementById('instr-text').textContent='Loading pose model…';
+    await loadDetector();
+  }
+
+  setScanSource(video);
+  stableCount=0;heightHist=[];hasAutoCaptured=false;lastMeas=null;
+  startLoop();
+}
+
+function positionStabRing(){
+  const ring=document.getElementById('stab-ring');
+  const safeBot=parseInt(getComputedStyle(document.documentElement).getPropertyValue('--sat'))||0;
+  ring.style.bottom=(safeBot+24)+'px';
+  document.getElementById('btn-last').style.bottom=(safeBot+36)+'px';
+}
+
+function stopScan(){
+  if(rafId){cancelAnimationFrame(rafId);rafId=null;}
+  if(video.srcObject){video.srcObject.getTracks().forEach(t=>t.stop());video.srcObject=null;}
+  latestPose=null;
+}
+
+// ── CROP HELPER ───────────────────────────────────────────────────────────────
+function getCrop(){
+  const vw=scanSrcW,vh=scanSrcH,dw=oc.width,dh=oc.height;
+  if(!vw||!vh)return null;
+  if(vw/vh>dw/dh){const s=dh/vh;return{sx:(vw-dw/s)/2,sy:0,sw:dw/s,sh:vh,scale:s};}
+  const s=dw/vw;return{sx:0,sy:(vh-dh/s)/2,sw:vw,sh:dh/s,scale:s};
+}
+function v2s(vx,vy,cp){return{x:(vx-cp.sx)*cp.scale,y:(vy-cp.sy)*cp.scale};}
+
+// ── SILHOUETTE EDGE SCAN ──────────────────────────────────────────────────────
+function detectSilhouetteWidth(yScrCenter,cp,guardLeft,guardRight,seedLeft,seedRight){
+  if(!scanSrcW)return null;
+  const STRIP_H=32,vW=scanSrcW,vH=scanSrcH;
+  const yVid=yScrCenter/cp.scale+cp.sy;
+  if(yVid<STRIP_H/2||yVid>vH-STRIP_H/2)return null;
+  const xVL=Math.max(0,  guardLeft /cp.scale+cp.sx);
+  const xVR=Math.min(vW, guardRight/cp.scale+cp.sx);
+  const xW=Math.round(xVR-xVL);
+  if(xW<20)return null;
+  const sc=document.createElement('canvas');
+  sc.width=xW;sc.height=STRIP_H;
+  const sctx=sc.getContext('2d',{willReadFrequently:true});
+  sctx.drawImage(scanSource,xVL,yVid-STRIP_H/2,xW,STRIP_H,0,0,xW,STRIP_H);
+
+  const toSamp=scrX=>Math.round(scrX/cp.scale+cp.sx-xVL);
+  const seedLS=seedLeft !=null?toSamp(seedLeft) :null;
+  const seedRS=seedRight!=null?toSamp(seedRight):null;
+  return _edgesFromCanvas(sctx,xW,STRIP_H,xVL,cp,seedLS,seedRS);
+}
+
+function _edgesFromCanvas(sctx,xW,h,xVL,cp,seedLS,seedRS){
+  const px=sctx.getImageData(0,0,xW,h).data;
+  const luma=new Float32Array(xW);
+  for(let x=0;x<xW;x++){
+    let s=0;
+    for(let y=0;y<h;y++){const i=(y*xW+x)*4;s+=0.299*px[i]+0.587*px[i+1]+0.114*px[i+2];}
+    luma[x]=s/h;
+  }
+  let minL=255,maxL=0;
+  for(let x=0;x<xW;x++){if(luma[x]<minL)minL=luma[x];if(luma[x]>maxL)maxL=luma[x];}
+  const rangeL=maxL-minL;
+  if(rangeL>1)for(let x=0;x<xW;x++)luma[x]=(luma[x]-minL)/rangeL*255;
+  const grad=new Float32Array(xW);
+  for(let x=1;x<xW-1;x++)grad[x]=Math.abs(luma[x+1]-luma[x-1])/2;
+  const gradS=new Float32Array(xW);
+  for(let x=2;x<xW-2;x++)gradS[x]=(grad[x-2]+2*grad[x-1]+3*grad[x]+2*grad[x+1]+grad[x+2])/10;
+  let maxG=0;
+  for(let x=0;x<xW;x++)maxG=Math.max(maxG,gradS[x]);
+  if(maxG<2)return null;
+  const thr=Math.max(maxG*0.22,2.0);
+  let leftIdx=-1,rightIdx=-1;
+
+  if(seedLS!=null){
+    // Outward scan: left edge = scan RIGHT-to-LEFT from seedLS (going toward image edge)
+    for(let x=seedLS;x>=0;x--){if(gradS[x]>=thr){leftIdx=x;break;}}
+  }else{
+    for(let x=0;x<xW;x++){if(gradS[x]>=thr){leftIdx=x;break;}}
+  }
+  if(seedRS!=null){
+    for(let x=seedRS;x<xW;x++){if(gradS[x]>=thr){rightIdx=x;break;}}
+  }else{
+    for(let x=xW-1;x>=0;x--){if(gradS[x]>=thr){rightIdx=x;break;}}
+  }
+
+  if(leftIdx<0||rightIdx<0||rightIdx<=leftIdx)return null;
+
+  const vidXL=xVL+leftIdx, vidXR=xVL+rightIdx;
+  const scrXL=(vidXL-cp.sx)*cp.scale;
+  const scrXR=(vidXR-cp.sx)*cp.scale;
+  return{leftX:scrXL,rightX:scrXR,widthPx:scrXR-scrXL};
+}
+
+// ── TORSO SILHOUETTE SCAN ─────────────────────────────────────────────────────
+function armXatScrY(scrY,sh,el,wr){
+  if(!sh)return null;
+  if(!el){return sh.x;}
+  if(scrY<=sh.y)return sh.x;
+  if(!wr||scrY<=el.y){
+    const t=(scrY-sh.y)/(el.y-sh.y+0.001);
+    return sh.x+(el.x-sh.x)*t;
+  }
+  const t=(scrY-el.y)/(wr.y-el.y+0.001);
+  return el.x+(wr.x-el.x)*t;
+}
+
+function scanTorsoSilhouette(topScrY,botScrY,midScrX,halfWidthScr,cp,armKps){
+  if(!scanSrcW)return null;
+  const SAMPLE_W=200,SAMPLE_H=Math.max(8,Math.round((botScrY-topScrY)*cp.scale/cp.scale));
+
+  const xVL=Math.max(0,(midScrX-halfWidthScr)/cp.scale+cp.sx);
+  const xVR=Math.min(scanSrcW,(midScrX+halfWidthScr)/cp.scale+cp.sx);
+  const topV=topScrY/cp.scale+cp.sy;
+  const botV=botScrY/cp.scale+cp.sy;
+  if(xVR-xVL<10||botV-topV<10)return null;
+
+  const sc=document.createElement('canvas');
+  sc.width=SAMPLE_W;sc.height=SAMPLE_H;
+  const sctx=sc.getContext('2d',{willReadFrequently:true});
+  sctx.drawImage(scanSource,xVL,topV,xVR-xVL,botV-topV,0,0,SAMPLE_W,SAMPLE_H);
+  const px=sctx.getImageData(0,0,SAMPLE_W,SAMPLE_H).data;
+  const scaleX=(xVR-xVL)/SAMPLE_W;
+
+  const ARM_HALF=SAMPLE_W*0.075;
+  const rows=[];
+
+  for(let sy=2;sy<SAMPLE_H-2;sy++){
+    const rowL=new Float32Array(SAMPLE_W);
+    for(let x=0;x<SAMPLE_W;x++){
+      const i=(sy*SAMPLE_W+x)*4;
+      rowL[x]=0.299*px[i]+0.587*px[i+1]+0.114*px[i+2];
+    }
+    let minR=255,maxR=0;
+    for(let x=0;x<SAMPLE_W;x++){if(rowL[x]<minR)minR=rowL[x];if(rowL[x]>maxR)maxR=rowL[x];}
+    const rangeR=maxR-minR;
+    if(rangeR>1)for(let x=0;x<SAMPLE_W;x++)rowL[x]=(rowL[x]-minR)/rangeR*255;
+
+    const g=new Float32Array(SAMPLE_W);
+    for(let x=1;x<SAMPLE_W-1;x++)g[x]=Math.abs(rowL[x+1]-rowL[x-1])/2;
+    let maxG=0;for(let x=0;x<SAMPLE_W;x++)maxG=Math.max(maxG,g[x]);
+    if(maxG<3)continue;
+    const thr=Math.max(maxG*0.22,3.0);
+
+    const scrY=topScrY+(sy/SAMPLE_H)*(botScrY-topScrY);
+
+    let leftMaskR=0,rightMaskL=SAMPLE_W;
+    if(armKps){
+      const lArmX=armXatScrY(scrY,armKps.ls,armKps.le,armKps.lw);
+      const rArmX=armXatScrY(scrY,armKps.rs,armKps.re,armKps.rw);
+      if(lArmX!=null){
+        const lSamp=(((lArmX/cp.scale+cp.sx)-xVL)/scaleX);
+        leftMaskR=Math.round(lSamp+ARM_HALF/scaleX);
+      }
+      if(rArmX!=null){
+        const rSamp=(((rArmX/cp.scale+cp.sx)-xVL)/scaleX);
+        rightMaskL=Math.round(rSamp-ARM_HALF/scaleX);
+      }
+    }
+
+    let lIdx=-1;
+    const lStart=Math.min(leftMaskR,Math.floor(SAMPLE_W*0.5)-2);
+    for(let x=lStart;x>=0;x--){if(g[x]>=thr){lIdx=x;break;}}
+
+    let rIdx=-1;
+    const rStart=Math.max(rightMaskL,Math.ceil(SAMPLE_W*0.5)+2);
+    for(let x=rStart;x<SAMPLE_W;x++){if(g[x]>=thr){rIdx=x;break;}}
+
+    if(lIdx<0)for(let x=0;x<SAMPLE_W;x++){if(g[x]>=thr){lIdx=x;break;}}
+    if(rIdx<0)for(let x=SAMPLE_W-1;x>=0;x--){if(g[x]>=thr){rIdx=x;break;}}
+
+    if(lIdx<0||rIdx<=lIdx)continue;
+
+    const vidXL2=xVL+lIdx*scaleX,vidXR2=xVL+rIdx*scaleX;
+    const scrXL=(vidXL2-cp.sx)*cp.scale;
+    const scrXR=(vidXR2-cp.sx)*cp.scale;
+    rows.push({y:scrY,leftX:scrXL,rightX:scrXR,widthPx:scrXR-scrXL});
+  }
+  return rows.length>=4?rows:null;
+}
+
+// ── MEASUREMENT CALCULATION ───────────────────────────────────────────────────
+function calcMeas(pose,heightCm){
+  if(!pose||heightCm<100)return null;
+  const cp=getCrop();if(!cp)return null;
+  const kps=pose.keypoints;
+
+  const nose=kps[KP.NOSE];
+  if(!nose||nose.score<MIN_SCORE)return null;
+
+  // ── CROWN & FLOOR ESTIMATION ──────────────────────────────────────────────
+  // MediaPipe bonus: use heel / foot_index landmarks for a better floor plane.
+  // heel = back of heel (idx 29/30), foot_index = ball of foot / toe (idx 31/32).
+  // Both sit at floor level in a standing pose — whichever is lower wins.
+  const la=kps[KP.L_ANKLE], ra=kps[KP.R_ANKLE];
+  const lk=kps[KP.L_KNEE],  rk=kps[KP.R_KNEE];
+  const lHeel=kps[KP.L_HEEL],    rHeel=kps[KP.R_HEEL];
+  const lFoot=kps[KP.L_FOOT],    rFoot=kps[KP.R_FOOT];
+  const ANKLE_MIN=0.35;
+
+  // Collect all reliable floor-level y coords and take the lowest (largest y in image coords)
+  const floorCandidates=[];
+  const addFloor=(kp,thresh=ANKLE_MIN)=>{if(kp&&kp.score>thresh)floorCandidates.push(kp.y);};
+  addFloor(la);addFloor(ra);
+  addFloor(lHeel,0.3);addFloor(rHeel,0.3);
+  addFloor(lFoot,0.3);addFloor(rFoot,0.3);
+
+  let ankleVY=null;
+  if(floorCandidates.length>0){
+    // Use lowest visible landmark as anchor; we'll still apply a small extrapolation
+    // to get the actual floor level (foot sole, not ankle center).
+    // Take average of the two lowest to avoid single outlier.
+    floorCandidates.sort((a,b)=>b-a); // descending = lower in image first
+    ankleVY=floorCandidates.length>=2
+      ?(floorCandidates[0]+floorCandidates[1])/2
+      :floorCandidates[0];
+  }else{
+    // Fallback to knee extrapolation
+    const lkOK=lk?.score>MIN_SCORE, rkOK=rk?.score>MIN_SCORE;
+    if(!lkOK&&!rkOK)return null;
+    const kneeVY=lkOK&&rkOK?(lk.y+rk.y)/2:(lkOK?lk.y:rk.y);
+    ankleVY=nose.y+(kneeVY-nose.y)*(87/66);
+  }
+
+  const a2n=ankleVY-nose.y;
+  if(a2n<40)return null;
+
+  // If heel/foot_index landmarks are used, the floor offset is smaller because
+  // those landmarks are already closer to the actual floor than the ankle center.
+  // Check if we used heel/foot data (lower than bare ankle average)
+  const laOK=la?.score>ANKLE_MIN, raOK=ra?.score>ANKLE_MIN;
+  const bareAnkleY = laOK&&raOK?(la.y+ra.y)/2 : laOK?la.y : raOK?ra.y : null;
+  const usedFootData = floorCandidates.length>0 && bareAnkleY!=null
+    && ankleVY > bareAnkleY + 2; // foot/heel is meaningfully lower than ankle
+
+  // Crown = ~10.3% of body height above nose; floor offset depends on landmark type
+  // If we reached heel/foot, floor is very close to actual ground → smaller offset
+  const floorOffset = usedFootData ? 0.015 : 0.046;
+  const crownVY=nose.y-a2n*0.103;
+  const floorVY=ankleVY+a2n*floorOffset;
+  const crownS=v2s(nose.x,crownVY,cp);
+  const floorS=v2s(nose.x,floorVY,cp);
+  const bodyPx=floorS.y-crownS.y;
+  if(bodyPx<80)return null;
+
+  const mmPx=(heightCm*10)/bodyPx;
+
+  function kpS(idx){
+    const k=kps[idx];
+    if(!k||k.score<MIN_SCORE)return null;
+    return v2s(k.x,k.y,cp);
+  }
+  function distS(a,b){
+    if(!a||!b)return null;
+    return Math.sqrt((a.x-b.x)**2+(a.y-b.y)**2);
+  }
+  function pxToCm(px){return px!=null?+(px*mmPx/10).toFixed(1):null;}
+
+  const ls=kpS(KP.L_SHOULDER),rs=kpS(KP.R_SHOULDER);
+  const lh=kpS(KP.L_HIP),     rh=kpS(KP.R_HIP);
+  const lw=kpS(KP.L_WRIST),   rw=kpS(KP.R_WRIST);
+  const le_=kpS(KP.L_ELBOW),  re_=kpS(KP.R_ELBOW);
+  const la_=kpS(KP.L_ANKLE)||{x:v2s(nose.x,ankleVY,cp).x,y:v2s(nose.x,ankleVY,cp).y};
+  const ra_=kpS(KP.R_ANKLE)||la_;
+
+  // Shoulder width — silhouette scan at shoulder Y level
+  let shoulderCm=null, shoulderSil=null;
+  if(ls&&rs){
+    const shY=(ls.y+rs.y)/2;
+    const jDist=distS(ls,rs);
+    const midX=(ls.x+rs.x)/2;
+    const sil=detectSilhouetteWidth(shY,cp,midX-jDist*1.5,midX+jDist*1.5,rs.x,ls.x);
+    if(sil&&sil.widthPx>20){
+      shoulderCm=pxToCm(sil.widthPx);
+      shoulderSil=sil;
+    }else{
+      shoulderCm=pxToCm(jDist);
+    }
+    if(shoulderCm<heightCm*0.22){
+      shoulderCm=+(heightCm*0.245).toFixed(1);
+      shoulderSil=null;
+    }
+    if(shoulderCm>heightCm*0.285){
+      shoulderCm=+(heightCm*0.275).toFixed(1);
+      shoulderSil=null;
+    }
+  }
+
+  const rawShoulderForBaggy=shoulderCm;
+  const baggyClothing=rawShoulderForBaggy>heightCm*0.27;
+
+  // ── TORSO SILHOUETTE: one pass gives waist (min) + hip (max) ────────────
+  let hipCm=null, hipSil=null;
+  let waistCm=null, waistSil=null, waistScrY=null;
+
+  if(ls&&rs&&lh&&rh){
+    const shY=(ls.y+rs.y)/2;
+    const hipY=(lh.y+rh.y)/2;
+    const torsoH=hipY-shY;
+    const midX=(ls.x+rs.x)/2;
+    const shoulderPx=shoulderSil?shoulderSil.widthPx:distS(ls,rs);
+    const halfW=distS(ls,rs)*0.65;
+    const scanBot=hipY+torsoH*0.25;
+    const armKps={ls,le:kpS(KP.L_ELBOW),lw:kpS(KP.L_WRIST),rs,re:kpS(KP.R_ELBOW),rw:kpS(KP.R_WRIST)};
+    const rows=scanTorsoSilhouette(shY,scanBot,midX,halfW,cp,armKps);
+
+    if(rows&&rows.length>=4){
+      const waistZoneBot=shY+torsoH*0.60;
+      const waistMin=shoulderPx*0.55;
+      const waistRows=rows.filter(r=>r.y>shY+10&&r.y<waistZoneBot&&r.widthPx>=waistMin);
+      if(waistRows.length>=2){
+        const best=waistRows.reduce((a,b)=>b.widthPx<a.widthPx?b:a);
+        waistCm=pxToCm(best.widthPx);
+        waistSil={leftX:best.leftX,rightX:best.rightX,widthPx:best.widthPx};
+        waistScrY=best.y;
+      }
+
+      const hipZoneTop=shY+torsoH*0.50;
+      const hipMax=shoulderPx*1.05;
+      const hipRows=rows.filter(r=>r.y>hipZoneTop&&r.widthPx<=hipMax);
+      if(hipRows.length>=2){
+        const best=hipRows.reduce((a,b)=>b.widthPx>a.widthPx?b:a);
+        hipCm=pxToCm(best.widthPx);
+        hipSil={leftX:best.leftX,rightX:best.rightX,widthPx:best.widthPx,y:best.y};
+      }
+    }
+  }
+
+  // ── HYBRID SANITY CHECK ───────────────────────────────────────────────────
+  if(lh&&rh){
+    const jointPx=distS(lh,rh);
+    const jointFloorPx=jointPx*1.10;
+    const lkScore=kps[KP.L_KNEE]?.score||0, rkScore=kps[KP.R_KNEE]?.score||0;
+    const likelyShorts=(lkScore+rkScore)/2>0.60;
+    const hipFallbackRatio=likelyShorts?1.25:1.45;
+
+    if(hipSil&&hipSil.widthPx<jointFloorPx){
+      const fallbackPx=jointPx*hipFallbackRatio;
+      const cx=(hipSil.leftX+hipSil.rightX)/2;
+      hipSil={leftX:cx-fallbackPx/2,rightX:cx+fallbackPx/2,widthPx:fallbackPx,y:hipSil.y,isFallback:true};
+      hipCm=pxToCm(fallbackPx);
+    }else if(!hipCm){
+      hipCm=pxToCm(jointPx*hipFallbackRatio);
+    }
+
+    if(waistSil&&waistSil.widthPx<jointFloorPx){
+      const fallbackPx=jointPx*1.3;
+      const cx=(waistSil.leftX+waistSil.rightX)/2;
+      waistSil={leftX:cx-fallbackPx/2,rightX:cx+fallbackPx/2,widthPx:fallbackPx,isFallback:true};
+      waistCm=pxToCm(fallbackPx);
+    }
+    if(!waistCm&&ls&&rs&&lh&&rh){
+      const fallbackPx=jointPx*1.3;
+      const midX=(ls.x+rs.x)/2;
+      const shY=(ls.y+rs.y)/2, hipY=(lh.y+rh.y)/2;
+      waistCm=pxToCm(fallbackPx);
+      waistScrY=shY+(hipY-shY)*0.40;
+      waistSil={leftX:midX-fallbackPx/2,rightX:midX+fallbackPx/2,widthPx:fallbackPx,isFallback:true};
+    }
+  }
+
+  // ── WAIST CORRECTION ─────────────────────────────────────────────────────
+  if(waistCm&&!baggyClothing&&waistCm<heightCm*0.175)
+    waistCm=+(waistCm*1.08).toFixed(1);
+
+  // ── TORSO ─────────────────────────────────────────────────────────────────
+  let torsoCm=null;
+  if(ls&&rs&&lh&&rh){
+    const midSh={x:(ls.x+rs.x)/2,y:(ls.y+rs.y)/2};
+    const midHip={x:(lh.x+rh.x)/2,y:(lh.y+rh.y)/2};
+    torsoCm=pxToCm(distS(midSh,midHip));
+    if(torsoCm&&torsoCm>heightCm*0.325)
+      torsoCm=+(heightCm*0.30).toFixed(1);
+  }
+
+  // ── INSEAM ────────────────────────────────────────────────────────────────
+  let inseamCm=null;
+  if(lh&&rh){
+    const midHip={x:(lh.x+rh.x)/2,y:(lh.y+rh.y)/2};
+    const midAnkle={x:(la_.x+ra_.x)/2,y:(la_.y+ra_.y)/2};
+    inseamCm=pxToCm(distS(midHip,midAnkle));
+  }
+
+  // ── ARM LENGTH ────────────────────────────────────────────────────────────
+  // MediaPipe bonus: use pinky/index finger tip for a slightly longer reach.
+  // Only when wrist visibility is low (wrist may be partially occluded but
+  // finger tips more visible) — otherwise stick to wrist for consistency.
+  let armCm=null;
+  const lPinky=kps[KP.L_FOOT]?null:kpS(17); // L_PINKY=17
+  const rPinky=kpS(18);                       // R_PINKY=18
+  if(ls&&le_&&lw){
+    armCm=pxToCm((distS(ls,le_)||0)+(distS(le_,lw)||0));
+  }else if(rs&&re_&&rw){
+    armCm=pxToCm((distS(rs,re_)||0)+(distS(re_,rw)||0));
+  }
+
+  const kpScores=[kps[KP.L_SHOULDER],kps[KP.R_SHOULDER],kps[KP.L_HIP],kps[KP.R_HIP]]
+    .filter(Boolean).map(k=>k.score);
+  const avgKpScore=kpScores.length?kpScores.reduce((a,b)=>a+b,0)/kpScores.length:0;
+
+  return{
+    heightCm,mmPx:+mmPx.toFixed(3),bodyPx:Math.round(bodyPx),
+    shoulderCm,hipCm,waistCm,torsoCm,inseamCm,armCm,
+    shoulderSil,hipSil,waistSil,waistScrY,
+    shoulderJointCm:ls&&rs?pxToCm(distS(ls,rs)):null,
+    hipJointCm:lh&&rh?pxToCm(distS(lh,rh)):null,
+    baggyClothing,
+    confidence:+avgKpScore.toFixed(2),
+    crownSY:crownS.y,floorSY:floorS.y,noseSX:crownS.x,
+    kps:kps.map(k=>k?v2s(k.x,k.y,cp):null),
+    kpsRaw:kps
+  };
+}
+
+// ── FRAMING CHECK ─────────────────────────────────────────────────────────────
+function checkFraming(pose,cp){
+  if(!pose||!cp)return'Position yourself in front of the camera';
+  const kps=pose.keypoints;
+  const nose=kps[KP.NOSE];
+  if(!nose||nose.score<MIN_SCORE)return'Face the camera — head not detected';
+  const la=kps[KP.L_ANKLE],ra=kps[KP.R_ANKLE];
+  const lk=kps[KP.L_KNEE], rk=kps[KP.R_KNEE];
+  const ankleSeen=(la?.score>0.35)||(ra?.score>0.35);
+  const kneeSeen=(lk?.score>MIN_SCORE)||(rk?.score>MIN_SCORE);
+  if(!ankleSeen&&!kneeSeen)return'Move back — show full body';
+  return null;
+}
+
+// ── STABILITY TRACKING ────────────────────────────────────────────────────────
+function trackStability(heightCm){
+  if(heightCm==null){heightHist=[];stableCount=0;return 0;}
+  heightHist.push(heightCm);if(heightHist.length>40)heightHist.shift();
+  if(heightHist.length<5)return 0;
+  const mean=heightHist.reduce((a,b)=>a+b,0)/heightHist.length;
+  const std=Math.sqrt(heightHist.map(v=>(v-mean)**2).reduce((a,b)=>a+b,0)/heightHist.length);
+  const stable=std<STABLE_TOL_CM;
+  stableCount=stable?Math.min(stableCount+1,STABLE_FRAMES):Math.max(stableCount-2,0);
+  return stableCount/STABLE_FRAMES;
+}
+
+function updateStabRing(ratio){
+  const circ=201;
+  document.getElementById('stab-fill').style.strokeDashoffset=(circ*(1-ratio)).toFixed(1);
+  document.getElementById('stab-fill').style.stroke=ratio>=1?'#fff':'#7ec8e3';
+  document.getElementById('stab-icon').textContent=ratio>=1?'✓':'🧍';
+}
+
+// ── SKELETON DRAWING ──────────────────────────────────────────────────────────
+// Updated pairs for MediaPipe 33-landmark layout
+const SKELETON_PAIRS=[
+  [KP.NOSE,KP.L_EYE],[KP.NOSE,KP.R_EYE],
+  [KP.L_EYE,KP.L_EAR],[KP.R_EYE,KP.R_EAR],
+  [KP.L_SHOULDER,KP.R_SHOULDER],
+  [KP.L_SHOULDER,KP.L_ELBOW],[KP.L_ELBOW,KP.L_WRIST],
+  [KP.R_SHOULDER,KP.R_ELBOW],[KP.R_ELBOW,KP.R_WRIST],
+  [KP.L_SHOULDER,KP.L_HIP],[KP.R_SHOULDER,KP.R_HIP],
+  [KP.L_HIP,KP.R_HIP],
+  [KP.L_HIP,KP.L_KNEE],[KP.L_KNEE,KP.L_ANKLE],
+  [KP.R_HIP,KP.R_KNEE],[KP.R_KNEE,KP.R_ANKLE],
+  // MediaPipe extras: heel + foot index
+  [KP.L_ANKLE,KP.L_HEEL],[KP.L_HEEL,KP.L_FOOT],
+  [KP.R_ANKLE,KP.R_HEEL],[KP.R_HEEL,KP.R_FOOT],
+];
+
+function drawSkeleton(pose,cp,c=ctx){
+  const kps=pose.keypoints;
+  c.save();
+  c.strokeStyle='rgba(126,200,227,0.75)';c.lineWidth=2;c.lineCap='round';
+  for(const[a,b]of SKELETON_PAIRS){
+    const ka=kps[a],kb=kps[b];
+    if(!ka||!kb||ka.score<MIN_SCORE||kb.score<MIN_SCORE)continue;
+    const sa=v2s(ka.x,ka.y,cp),sb=v2s(kb.x,kb.y,cp);
+    c.beginPath();c.moveTo(sa.x,sa.y);c.lineTo(sb.x,sb.y);c.stroke();
+  }
+  c.fillStyle='rgba(126,200,227,0.9)';
+  for(const k of kps){
+    if(!k||k.score<MIN_SCORE)continue;
+    const s=v2s(k.x,k.y,cp);
+    c.beginPath();c.arc(s.x,s.y,4,0,Math.PI*2);c.fill();
+  }
+  c.restore();
+}
+
+// ── MEASUREMENT OVERLAY ───────────────────────────────────────────────────────
+function drawMeasOverlay(meas,c=ctx,W=oc.width){
+  if(!meas)return;
+  c.save();
+  const kps=meas.kps;
+  const BRACKET_PAD=14;
+
+  function pill(text,cx,cy,color='#FFD700',bg='rgba(0,0,0,0.78)'){
+    c.font='bold 12px -apple-system,monospace';
+    const tw=c.measureText(text).width;
+    const pw=tw+16,ph=22,rx=8;
+    const clampedCX=Math.max(pw/2+4,Math.min(W-pw/2-4,cx));
+    c.fillStyle=bg;
+    c.beginPath();c.roundRect(clampedCX-pw/2,cy-ph/2,pw,ph,rx);c.fill();
+    c.fillStyle=color;c.textAlign='center';c.textBaseline='middle';
+    c.fillText(text,clampedCX,cy);
+  }
+
+  function hBracket(x1,x2,y,label,color='#7ec8e3',labelSide='right'){
+    if(x1==null||x2==null||label==null)return;
+    const lx=x1-BRACKET_PAD,rx=x2+BRACKET_PAD;
+    c.strokeStyle=color;c.lineWidth=1.5;
+    c.beginPath();c.moveTo(lx,y);c.lineTo(rx,y);c.stroke();
+    [lx,rx].forEach(x=>{c.beginPath();c.moveTo(x,y-6);c.lineTo(x,y+6);c.stroke();});
+    c.font='bold 12px -apple-system,monospace';
+    const pillW=c.measureText(label).width+16;
+    if(labelSide==='right')pill(label,rx+pillW/2+6,y,color);
+    else                   pill(label,lx-pillW/2-6,y,color);
+  }
+
+  function vBracket(x,y1,y2,label,color='#FFD700',side=1){
+    if(x==null||y1==null||y2==null||label==null)return;
+    const bx=x+side*20;
+    c.strokeStyle=color;c.lineWidth=1.5;
+    c.beginPath();c.moveTo(bx,y1);c.lineTo(bx,y2);c.stroke();
+    [y1,y2].forEach(ty=>{c.beginPath();c.moveTo(bx-5,ty);c.lineTo(bx+5,ty);c.stroke();});
+    const lx=bx+side*38;
+    pill(label,lx,(y1+y2)/2,color);
+  }
+
+  const ls=kps[KP.L_SHOULDER],rs=kps[KP.R_SHOULDER];
+  const lh=kps[KP.L_HIP],     rh=kps[KP.R_HIP];
+  const lk=kps[KP.L_KNEE],    rk=kps[KP.R_KNEE];
+  const la=kps[KP.L_ANKLE],   ra=kps[KP.R_ANKLE];
+
+  // Height
+  const rightEdge=rs?rs.x:meas.noseSX;
+  vBracket(rightEdge+30,meas.crownSY,meas.floorSY,meas.heightCm+' cm','#FFD700',1);
+
+  // Shoulder
+  if(ls&&rs){
+    const shY=Math.min(ls.y,rs.y)-10;
+    if(meas.shoulderSil){
+      hBracket(meas.shoulderSil.leftX,meas.shoulderSil.rightX,shY,meas.shoulderCm+' cm','#7ec8e3','right');
+      c.save();c.strokeStyle='rgba(126,200,227,0.35)';c.lineWidth=1;c.setLineDash([3,3]);
+      [ls.x,rs.x].forEach(x=>{c.beginPath();c.moveTo(x,shY-5);c.lineTo(x,shY+5);c.stroke();});
+      c.setLineDash([]);c.restore();
+    }else{
+      hBracket(ls.x,rs.x,shY,meas.shoulderCm?meas.shoulderCm+' cm':null,'#7ec8e3','right');
+    }
+  }
+
+  // Waist
+  if(meas.waistSil&&meas.waistScrY!=null){
+    if(meas.waistSil.isFallback){c.save();c.setLineDash([5,4]);}
+    hBracket(meas.waistSil.leftX,meas.waistSil.rightX,meas.waistScrY,meas.waistCm+' cm ~','#c8a4e8','left');
+    if(meas.waistSil.isFallback){c.setLineDash([]);c.restore();}
+  }
+
+  // Hip
+  if(meas.hipSil){
+    const hipBY=(meas.hipSil.y??((lh&&rh)?Math.max(lh.y,rh.y):0))+14;
+    if(meas.hipSil.isFallback){c.save();c.setLineDash([5,4]);}
+    hBracket(meas.hipSil.leftX,meas.hipSil.rightX,hipBY,meas.hipCm+' cm ~','#ff9632','right');
+    if(meas.hipSil.isFallback){c.setLineDash([]);c.restore();}
+  }else if(lh&&rh){
+    hBracket(lh.x,rh.x,Math.max(lh.y,rh.y)+18,meas.hipCm?meas.hipCm+' cm':null,'#ff9632','right');
+  }
+
+  // Torso
+  if(ls&&rs&&lh&&rh){
+    const leftEdge=Math.min(ls.x,lh.x);
+    vBracket(leftEdge-12,(ls.y+rs.y)/2,(lh.y+rh.y)/2,meas.torsoCm?meas.torsoCm+' cm':null,'#4CAF50',-1);
+  }
+
+  // Inseam
+  if(lh&&rh){
+    const midHipX=(lh.x+rh.x)/2,midHipY=(lh.y+rh.y)/2;
+    const ankleY=la&&ra?(la.y+ra.y)/2:la?la.y:ra?ra.y:meas.floorSY;
+    vBracket(midHipX,midHipY,ankleY,meas.inseamCm?meas.inseamCm+' cm':null,'#E8604C',1);
+  }
+
+  // Arm
+  const le=kps[KP.L_ELBOW],lw2=kps[KP.L_WRIST];
+  const re=kps[KP.R_ELBOW],rw2=kps[KP.R_WRIST];
+  const armKps=(ls&&le&&lw2)?[ls,le,lw2]:(rs&&re&&rw2)?[rs,re,rw2]:null;
+  if(armKps&&meas.armCm){
+    c.save();
+    c.strokeStyle='rgba(200,164,232,0.7)';c.lineWidth=2;c.setLineDash([5,4]);
+    c.beginPath();c.moveTo(armKps[0].x,armKps[0].y);
+    armKps.slice(1).forEach(p=>c.lineTo(p.x,p.y));
+    c.stroke();c.setLineDash([]);
+    armKps.forEach(p=>{
+      c.beginPath();c.arc(p.x,p.y,3,0,Math.PI*2);
+      c.fillStyle='rgba(200,164,232,0.85)';c.fill();
+    });
+    const wrist=armKps[armKps.length-1];
+    pill(meas.armCm+' cm',wrist.x+(wrist.x<W/2?-50:50),wrist.y,'#c8a4e8');
+    c.restore();
+  }
+
+  c.restore();
+}
+
+// ── INSTRUCTIONS UPDATE ───────────────────────────────────────────────────────
+function updateInstr(framingErr,meas,stabRatio){
+  const t=document.getElementById('instr-text');
+  const s=document.getElementById('instr-sub');
+  if(framingErr){
+    t.textContent=framingErr;t.style.color='#ff8a80';s.textContent='';
+  }else if(!meas){
+    t.textContent='Detecting pose…';t.style.color='rgba(255,255,255,0.9)';
+    s.textContent='Stand facing the camera';
+  }else if(stabRatio<0.5){
+    t.textContent='Hold still';t.style.color='rgba(255,255,255,0.9)';
+    s.textContent='Keep arms slightly away from body';
+  }else if(stabRatio<1.0){
+    t.textContent='Almost there…';t.style.color='#7ec8e3';
+    s.textContent='Don\'t move';
+  }else{
+    t.textContent='Capturing…';t.style.color='#4CAF50';s.textContent='';
+  }
+}
+
+// ── MAIN LOOP ─────────────────────────────────────────────────────────────────
+function startLoop(){
+  function loop(){
+    rafId=requestAnimationFrame(loop);
+    if(!document.getElementById('screen-scan').classList.contains('active'))return;
+    if(video.readyState<2)return;
+
+    oc.width=window.innerWidth;oc.height=window.innerHeight;
+    ctx.clearRect(0,0,oc.width,oc.height);
+    if(video.videoWidth)setScanSource(video);
+
+    const cp=getCrop();if(!cp)return;
+
+    if(typeof loop._f==='undefined')loop._f=0;
+    loop._f++;
+    if(loop._f%2===0)runPose();
+
+    const framingErr=checkFraming(latestPose,cp);
+    const meas=framingErr?null:calcMeas(latestPose,knownHeightCm);
+    const stabRatio=trackStability(meas?.heightCm||null);
+
+    if(latestPose&&cp)drawSkeleton(latestPose,cp);
+    if(meas)drawMeasOverlay(meas);
+
+    updateStabRing(stabRatio);
+    updateInstr(framingErr,meas,stabRatio);
+
+    const fe=document.getElementById('framing-err');
+    fe.textContent=framingErr||'';fe.classList.toggle('show',!!framingErr);
+
+    const baggyWarn=document.getElementById('baggy-warn');
+    if(baggyWarn)baggyWarn.style.display=meas?.baggyClothing?'block':'none';
+
+    if(!hasAutoCaptured&&meas&&!framingErr&&stabRatio>=1.0){
+      hasAutoCaptured=true;
+      lastMeas={...meas};
+      doCapture(meas,cp);
+    }
+  }
+  loop();
+}
+
+// ── CAPTURE ───────────────────────────────────────────────────────────────────
+function doCapture(meas,cp){
+  if('vibrate'in navigator)navigator.vibrate([40,20,80]);
+
+  const cap=document.createElement('canvas');
+  cap.width=oc.width;cap.height=oc.height;
+  const c=cap.getContext('2d');
+
+  if(cp)c.drawImage(video,cp.sx,cp.sy,cp.sw,cp.sh,0,0,cap.width,cap.height);
+  if(latestPose)drawSkeleton(latestPose,cp,c);
+  drawMeasOverlay(meas,c,cap.width);
+  drawInfoBar(c,meas,cap.width,cap.height);
+
+  lastCapturedDataURL=cap.toDataURL('image/jpeg',0.92);
+
+  cap.toBlob(blob=>{
+    capturedImageBlob=blob;
+    lastCapturedBlob=blob;
+    updateLastBtn();
+    showResults(meas,cap);
+  },'image/jpeg',0.92);
+}
+
+function drawInfoBar(c,meas,W,H){
+  const PAD=12,LH=18;
+  const lines=[
+    `Height: ${meas.heightCm} cm  ·  Scale: ${meas.mmPx} mm/px  ·  MediaPipe`,
+    [
+      meas.shoulderCm?`Shoulders: ${meas.shoulderCm} cm`:'',
+      meas.waistCm?`Waist: ${meas.waistCm} cm`:'',
+      meas.hipCm?`Hips: ${meas.hipCm} cm`:'',
+    ].filter(Boolean).join('  ·  '),
+    [
+      meas.torsoCm?`Torso: ${meas.torsoCm} cm`:'',
+      meas.inseamCm?`Inseam: ${meas.inseamCm} cm`:'',
+      meas.armCm?`Arm: ${meas.armCm} cm`:'',
+    ].filter(Boolean).join('  ·  '),
+  ].filter(Boolean);
+
+  const barH=PAD*2+lines.length*LH;
+  c.fillStyle='rgba(0,0,0,0.80)';
+  c.fillRect(0,H-barH,W,barH);
+  c.fillStyle='#7ec8e3';c.fillRect(0,H-barH,W,2);
+
+  c.font='11px -apple-system,monospace';
+  c.textAlign='left';c.textBaseline='top';
+  lines.forEach((line,i)=>{
+    c.fillStyle=i===0?'#fff':'rgba(255,255,255,0.6)';
+    c.fillText(line,PAD,H-barH+PAD+i*LH);
+  });
+  c.font='9px monospace';c.fillStyle='rgba(255,255,255,0.2)';
+  c.textAlign='right';
+  c.fillText('body scan · mediapipe',W-PAD,H-PAD-9);
+}
+
+// ── RESULTS ───────────────────────────────────────────────────────────────────
+function showResults(meas,capCanvas){
+  stopScan();
+
+  const wrap=document.querySelector('.results-preview-wrap');
+  wrap.innerHTML='<canvas id="preview-canvas"></canvas>';
+  const pc=document.getElementById('preview-canvas');
+  pc.width=capCanvas.width;pc.height=capCanvas.height;
+  pc.getContext('2d').drawImage(capCanvas,0,0);
+  wrap.onclick=openViewer;
+
+  document.getElementById('res-sub').textContent=
+    `${meas.heightCm} cm · ${Math.round(meas.mmPx*10)/10} mm/px · MediaPipe`;
+
+  const grid=document.getElementById('meas-grid');
+  grid.innerHTML='';
+
+  const conf=meas.confidence;
+  const confLabel=conf>0.7?'High confidence':conf>0.4?'Moderate confidence':'Estimate';
+
+  function card(label,val,unit,highlight,note){
+    if(val==null)return;
+    const d=document.createElement('div');
+    d.className='meas-card'+(highlight?' highlight':'');
+    d.innerHTML=`
+      <div class="meas-lbl">${label}</div>
+      <div class="meas-val">${val}<span>${unit}</span></div>
+      ${note?`<div class="meas-confidence">${note}</div>`:''}
+    `;
+    grid.appendChild(d);
+  }
+  function cardFull(label,val,unit,note){
+    if(val==null)return;
+    const d=document.createElement('div');
+    d.className='meas-card full';
+    d.innerHTML=`
+      <div class="meas-lbl">${label}</div>
+      <div class="meas-val">${val}<span>${unit}</span></div>
+      ${note?`<div class="meas-confidence">${note}</div>`:''}
+    `;
+    grid.appendChild(d);
+  }
+
+  document.getElementById('baggy-results-warn').style.display=meas.baggyClothing?'block':'none';
+  cardFull('Height (input)',meas.heightCm,'cm','Your input');
+  card('Shoulders',meas.shoulderCm,'cm',true,
+    meas.shoulderSil?`Silhouette · joint: ${meas.shoulderJointCm} cm`:confLabel);
+  card('Waist',meas.waistCm,'cm',true,
+    meas.waistSil?'Silhouette':confLabel);
+  card('Hips',meas.hipCm,'cm',false,
+    meas.hipSil?`Silhouette · joint: ${meas.hipJointCm} cm`:confLabel);
+  card('Torso',meas.torsoCm,'cm',false,confLabel);
+  card('Inseam',meas.inseamCm,'cm',false,confLabel);
+  card('Arm length',meas.armCm,'cm',false,confLabel);
+
+  show('screen-results');
+}
+
+function shareResults(){
+  if(!capturedImageBlob)return;
+  const file=new File([capturedImageBlob],'body-scan-mp.jpg',{type:'image/jpeg'});
+  if(navigator.canShare?.({files:[file]})){
+    navigator.share({files:[file],title:'Body Scan Results (MediaPipe)'}).catch(()=>downloadCapture());
+  }else{
+    downloadCapture();
+  }
+}
+
+function downloadCapture(){
+  if(!capturedImageBlob)return;
+  const a=document.createElement('a');
+  a.href=URL.createObjectURL(capturedImageBlob);
+  a.download=`body-scan-mediapipe-${lastMeas?.heightCm||''}cm.jpg`;a.click();
+}
+
+// ── BATCH TEST ────────────────────────────────────────────────────────────────
+let batchFiles=[], batchResults=[];
+
+const KNOWN_HEIGHTS={
+  'p1':175,'p2':177,'p3':183,'p4':183,'p5':192,
+  'p6':188,'p7':172,'p8':180,'p9':171,'p10':176,
+  'p11':174,'p12':175,'p13':178,'p14':178,'p15':186
+};
+
+function guessHeight(filename){
+  const base=filename.replace(/\.[^.]+$/,'').toLowerCase().trim();
+  return KNOWN_HEIGHTS[base]||null;
+}
+
+function handleBatchFiles(evt){
+  batchFiles=Array.from(evt.target.files);
+  if(!batchFiles.length)return;
+  const list=document.getElementById('batch-file-list');
+  list.innerHTML='';
+  batchFiles.forEach((f,i)=>{
+    const preset=guessHeight(f.name);
+    const row=document.createElement('div');
+    row.style.cssText='display:flex;align-items:center;gap:10px;background:rgba(255,255,255,0.04);border:1px solid rgba(255,255,255,0.08);border-radius:10px;padding:10px 12px';
+    row.innerHTML=`
+      <div style="flex:1;font-size:12px;color:rgba(255,255,255,0.7);overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${f.name}</div>
+      <div style="display:flex;align-items:baseline;gap:4px;flex-shrink:0">
+        <input type="number" id="batch-h-${i}" inputmode="numeric" min="100" max="250"
+          placeholder="cm" value="${preset||''}"
+          style="width:60px;background:rgba(255,255,255,0.08);border:1px solid ${preset?'rgba(126,200,227,0.5)':'rgba(255,255,255,0.2)'};border-radius:8px;color:${preset?'#7ec8e3':'#fff'};font-size:14px;font-weight:600;padding:6px 8px;text-align:center;outline:none">
+        <span style="font-size:11px;color:rgba(255,255,255,0.4)">cm</span>
+      </div>`;
+    list.appendChild(row);
+  });
+  document.getElementById('btn-run-batch').style.display='block';
+}
+
+async function runBatchAnalysis(){
+  if(!batchFiles.length)return;
+  const heights=batchFiles.map((_,i)=>parseFloat(document.getElementById(`batch-h-${i}`)?.value)||0);
+  const missing=heights.filter(h=>h<100||h>250).length;
+  if(missing>0){alert(`Please enter a valid height (100–250 cm) for all ${missing} photo(s).`);return;}
+
+  if(!detector){
+    document.getElementById('batch-progress-text').textContent='Loading MediaPipe model…';
+    document.getElementById('batch-progress').style.display='block';
+    await loadDetector();
+  }
+
+  document.getElementById('btn-run-batch').style.display='none';
+  document.getElementById('batch-progress').style.display='block';
+  document.getElementById('batch-results').style.display='none';
+  batchResults=[];
+
+  for(let i=0;i<batchFiles.length;i++){
+    const pct=Math.round((i/batchFiles.length)*100);
+    document.getElementById('batch-progress-text').textContent=`Processing ${i+1} / ${batchFiles.length} — ${batchFiles[i].name}`;
+    document.getElementById('batch-progress-bar').style.width=pct+'%';
+
+    const result=await processBatchPhoto(batchFiles[i],heights[i]);
+    batchResults.push({file:batchFiles[i].name,height:heights[i],...result});
+  }
+
+  document.getElementById('batch-progress-bar').style.width='100%';
+  document.getElementById('batch-progress-text').textContent='Done!';
+  setTimeout(()=>document.getElementById('batch-progress').style.display='none',800);
+
+  renderBatchResults();
+}
+
+async function processBatchPhoto(file,heightCm){
+  const url=URL.createObjectURL(file);
+  const img=new Image();
+  await new Promise((res,rej)=>{img.onload=res;img.onerror=rej;img.src=url;});
+  setScanSource(img);
+
+  // Set canvas to natural image dimensions so getCrop() returns scale=1
+  oc.width=img.naturalWidth;oc.height=img.naturalHeight;
+
+  let pose=null;
+  try{
+    const runs=[];
+    for(let r=0;r<3;r++){
+      const result=detector.detect(img);
+      const p=mpToPose(result,img.naturalWidth,img.naturalHeight);
+      if(p)runs.push(p);
+    }
+    if(runs.length>0){
+      const avg=JSON.parse(JSON.stringify(runs[0]));
+      avg.keypoints=avg.keypoints.map((kp,ki)=>({
+        ...kp,
+        x:runs.reduce((s,r)=>s+r.keypoints[ki].x,0)/runs.length,
+        y:runs.reduce((s,r)=>s+r.keypoints[ki].y,0)/runs.length,
+        score:runs.reduce((s,r)=>s+r.keypoints[ki].score,0)/runs.length,
+      }));
+      pose=avg;
+    }
+  }catch(e){}
+
+  if(!pose){setScanSource(video);URL.revokeObjectURL(url);return{error:'No pose detected'};}
+
+  let meas=null;
+  try{meas=calcMeas(pose,heightCm);}
+  catch(e){setScanSource(video);URL.revokeObjectURL(url);return{error:e.message};}
+  setScanSource(video);
+  URL.revokeObjectURL(url);
+  if(!meas)return{error:'Could not compute measurements'};
+
+  return{
+    shoulder:meas.shoulderCm,waist:meas.waistCm,hip:meas.hipCm,
+    torso:meas.torsoCm,inseam:meas.inseamCm,arm:meas.armCm,
+    baggy:meas.baggyClothing,error:null
+  };
+}
+
+function renderBatchResults(){
+  const tbody=document.getElementById('batch-tbody');
+  tbody.innerHTML='';
+  batchResults.forEach((r)=>{
+    const tr=document.createElement('tr');
+    tr.style.borderTop='1px solid rgba(255,255,255,0.06)';
+    const name=r.file.replace(/\.[^.]+$/,'').substring(0,16);
+    const fmt=v=>v!=null?v+'':'-';
+    const baggyIcon=r.baggy?'⚠':'';
+    tr.innerHTML=`
+      <td style="padding:9px 8px;color:rgba(255,255,255,0.8);white-space:nowrap">${name}</td>
+      <td style="padding:9px 8px;text-align:center;color:#7ec8e3;font-weight:700">${r.height}</td>
+      <td style="padding:9px 8px;text-align:center;color:#eee">${fmt(r.shoulder)}</td>
+      <td style="padding:9px 8px;text-align:center;color:#eee">${fmt(r.waist)}</td>
+      <td style="padding:9px 8px;text-align:center;color:#eee">${fmt(r.hip)}</td>
+      <td style="padding:9px 8px;text-align:center;color:#eee">${fmt(r.torso)}</td>
+      <td style="padding:9px 8px;text-align:center;color:#eee">${fmt(r.inseam)}</td>
+      <td style="padding:9px 8px;text-align:center;color:#eee">${fmt(r.arm)}</td>
+      <td style="padding:9px 8px;text-align:center;color:#EDD94E">${r.error?'❌':baggyIcon}</td>
+    `;
+    tbody.appendChild(tr);
+  });
+  document.getElementById('batch-results').style.display='block';
+}
+
+function exportBatchCSV(){
+  const headers=['File','Height_cm','Shoulder_cm','Waist_cm','Hip_cm','Torso_cm','Inseam_cm','Arm_cm','Baggy','Error'];
+  const rows=batchResults.map(r=>[
+    `"${r.file}"`,r.height,
+    r.shoulder??'',r.waist??'',r.hip??'',r.torso??'',r.inseam??'',r.arm??'',
+    r.baggy?'yes':'no',r.error?`"${r.error}"`:'',
+  ].join(','));
+  const csv=[headers.join(','),...rows].join('\n');
+  const a=document.createElement('a');
+  a.href='data:text/csv;charset=utf-8,'+encodeURIComponent(csv);
+  a.download=`mediapipe-bodyscan-batch-${Date.now()}.csv`;
+  a.click();
+}
+
+function resetBatch(){
+  batchFiles=[];batchResults=[];
+  document.getElementById('batch-file-list').innerHTML='';
+  document.getElementById('btn-run-batch').style.display='none';
+  document.getElementById('batch-results').style.display='none';
+  document.getElementById('batch-progress').style.display='none';
+}
+
+// ── EXPOSE TO WINDOW (required for inline onclick handlers in module context) ──
+Object.assign(window,{
+  setUnit,showInstructions,validateHeight,startScan,triggerPhotoUpload,
+  handlePhotoUpload,goBack,rescan,openViewer,closeViewer,showLastCapture,
+  show,shareResults,downloadCapture,handleBatchFiles,runBatchAnalysis,
+  exportBatchCSV,resetBatch
+});
+
+// ── INIT ──────────────────────────────────────────────────────────────────────
+loadDetector().catch(console.error);
+</script>
+
+</body>
+</html>
