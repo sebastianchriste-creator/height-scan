@@ -307,6 +307,17 @@ let capturedImageBlob=null;      // current session capture
 let lastCapturedBlob=null;       // persists across rescans
 let lastCapturedDataURL=null;    // for fast viewer display
 
+// ── SCAN SOURCE ───────────────────────────────────────────────────────────────
+// Unified source for both live video and uploaded photos.
+// All geometry + pixel-sampling functions use this instead of `video` directly.
+let scanSource=null;   // HTMLVideoElement or HTMLImageElement
+let scanSrcW=0, scanSrcH=0;
+function setScanSource(el){
+  scanSource=el;
+  scanSrcW=el.videoWidth||el.naturalWidth||0;
+  scanSrcH=el.videoHeight||el.naturalHeight||0;
+}
+
 const video=document.getElementById('video');
 const oc=document.getElementById('oc');
 const ctx=oc.getContext('2d');
@@ -368,7 +379,18 @@ async function handlePhotoUpload(evt){
     await loadDetector();
   }
 
-  // Run pose on image
+  // Point all scan functions at the uploaded image
+  setScanSource(img);
+
+  // Size canvas to window
+  oc.width=window.innerWidth;oc.height=window.innerHeight;
+  const cp=getCrop();
+
+  // Draw image to canvas
+  ctx.clearRect(0,0,oc.width,oc.height);
+  if(cp) ctx.drawImage(img,cp.sx,cp.sy,cp.sw,cp.sh,0,0,oc.width,oc.height);
+
+  // Run pose on the image element (MoveNet supports HTMLImageElement)
   let pose=null;
   try{
     const poses=await detector.estimatePoses(img,{flipHorizontal:false});
@@ -380,56 +402,23 @@ async function handlePhotoUpload(evt){
     show('screen-intro');
     document.getElementById('stab-ring').style.display='';
     document.getElementById('btn-back').style.display='';
+    setScanSource(video);
     return;
   }
-
-  // Render image to a full-screen canvas, compute measurements
-  oc.width=window.innerWidth;oc.height=window.innerHeight;
-
-  // Build a fake "crop" for a static image
-  const iw=img.naturalWidth, ih=img.naturalHeight;
-  const dw=oc.width, dh=oc.height;
-  let cp;
-  if(iw/ih>dw/dh){const s=dh/ih;cp={sx:(iw-dw/s)/2,sy:0,sw:dw/s,sh:ih,scale:s};}
-  else{const s=dw/iw;cp={sx:0,sy:(ih-dh/s)/2,sw:iw,sh:dh/s,scale:s};}
-
-  // Draw image to canvas
-  ctx.clearRect(0,0,dw,dh);
-  ctx.drawImage(img,cp.sx,cp.sy,cp.sw,cp.sh,0,0,dw,dh);
-
-  // For silhouette scanning we need video — swap in the image element temporarily
-  const _video=video; // save ref
-  // Patch: detectSilhouetteWidth and scanTorsoSilhouette use `video` global.
-  // We replace it temporarily.
-  const videoProxy=img; // Image has naturalWidth/naturalHeight, works with drawImage
-  videoProxy.videoWidth=img.naturalWidth;
-  videoProxy.videoHeight=img.naturalHeight;
-  videoProxy.readyState=4;
-  const origVideo=window._scanVideo||video;
-  window._photoImg=img; // used by patched getCrop
-
-  // Temporarily override globals for measurement
-  const savedVideo=video;
-  Object.defineProperty(window,'video',{value:videoProxy,configurable:true,writable:true});
 
   const meas=calcMeas(pose, knownHeightCm);
   lastMeas=meas?{...meas}:null;
 
-  // Restore video
-  Object.defineProperty(window,'video',{value:savedVideo,configurable:true,writable:true});
-
   // Draw skeleton + overlay onto canvas
-  if(pose)drawSkeleton(pose,cp,ctx);
-  if(meas)drawMeasOverlay(meas,ctx,dw);
+  if(pose&&cp) drawSkeleton(pose,cp,ctx);
+  if(meas) drawMeasOverlay(meas,ctx,oc.width);
 
   // Capture the annotated canvas
   const cap=document.createElement('canvas');
-  cap.width=dw;cap.height=dh;
+  cap.width=oc.width;cap.height=oc.height;
   const cc=cap.getContext('2d');
   cc.drawImage(oc,0,0);
-  if(pose)drawSkeleton(pose,cp,cc);
-  if(meas)drawMeasOverlay(meas,cc,dw);
-  drawInfoBar(cc,meas||{heightCm:knownHeightCm},dw,dh);
+  drawInfoBar(cc,meas||{heightCm:knownHeightCm},cap.width,cap.height);
 
   lastCapturedDataURL=cap.toDataURL('image/jpeg',0.92);
   cap.toBlob(blob=>{
@@ -437,12 +426,15 @@ async function handlePhotoUpload(evt){
     lastCapturedBlob=blob;
   },'image/jpeg',0.92);
 
+  // Restore scan source to video for any future live scans
+  setScanSource(video);
+
   // Restore scan screen UI
   document.getElementById('stab-ring').style.display='';
   document.getElementById('btn-back').style.display='';
 
   if(meas) showResults(meas,cap);
-  else{alert('Could not compute measurements. Try a clearer full-body photo.');show('screen-intro');}
+  else{alert('Could not compute measurements from this photo. Make sure the full body (head to feet) is visible.');show('screen-intro');}
   URL.revokeObjectURL(url);
 }
 
@@ -523,6 +515,7 @@ async function startScan(){
     await loadDetector();
   }
 
+  setScanSource(video);
   stableCount=0;heightHist=[];hasAutoCaptured=false;lastMeas=null;
   startLoop();
 }
@@ -542,20 +535,20 @@ function stopScan(){
 
 // ── CROP HELPER ───────────────────────────────────────────────────────────────
 function getCrop(){
-  const vw=video.videoWidth,vh=video.videoHeight,dw=oc.width,dh=oc.height;
+  const vw=scanSrcW,vh=scanSrcH,dw=oc.width,dh=oc.height;
   if(!vw||!vh)return null;
   if(vw/vh>dw/dh){const s=dh/vh;return{sx:(vw-dw/s)/2,sy:0,sw:dw/s,sh:vh,scale:s};}
   const s=dw/vw;return{sx:0,sy:(vh-dh/s)/2,sw:vw,sh:dh/s,scale:s};
 }
-// Convert video coords → screen coords
+// Convert video/image coords → screen coords
 function v2s(vx,vy,cp){return{x:(vx-cp.sx)*cp.scale,y:(vy-cp.sy)*cp.scale};}
 
 // ── SILHOUETTE EDGE SCAN ──────────────────────────────────────────────────────
 // Single-strip scan at one Y level. Used for shoulders.
 // guardLeft/guardRight in screen px constrain the search window.
 function detectSilhouetteWidth(yScrCenter, cp, guardLeft, guardRight){
-  if(!video.videoWidth)return null;
-  const STRIP_H=20, vW=video.videoWidth, vH=video.videoHeight;
+  if(!scanSrcW)return null;
+  const STRIP_H=20, vW=scanSrcW, vH=scanSrcH;
   const yVid=yScrCenter/cp.scale+cp.sy;
   if(yVid<STRIP_H/2||yVid>vH-STRIP_H/2)return null;
   const xVL=Math.max(0,  guardLeft /cp.scale+cp.sx);
@@ -565,7 +558,7 @@ function detectSilhouetteWidth(yScrCenter, cp, guardLeft, guardRight){
   const sc=document.createElement('canvas');
   sc.width=xW;sc.height=STRIP_H;
   const sctx=sc.getContext('2d',{willReadFrequently:true});
-  sctx.drawImage(video, xVL, yVid-STRIP_H/2, xW, STRIP_H, 0, 0, xW, STRIP_H);
+  sctx.drawImage(scanSource, xVL, yVid-STRIP_H/2, xW, STRIP_H, 0, 0, xW, STRIP_H);
   return _edgesFromCanvas(sctx, xW, STRIP_H, xVL, cp);
 }
 
@@ -606,8 +599,8 @@ function _edgesFromCanvas(sctx, xW, h, xVL, cp){
 // Much more reliable than calling detectSilhouetteWidth per row — single
 // getImageData avoids per-call overhead and threshold adapts globally.
 function scanTorsoSilhouette(topScrY, botScrY, midScrX, halfWidthScr, cp){
-  if(!video.videoWidth)return null;
-  const vW=video.videoWidth, vH=video.videoHeight;
+  if(!scanSrcW)return null;
+  const vW=scanSrcW, vH=scanSrcH;
 
   // Map to video coords
   const yVidTop=Math.max(0, topScrY/cp.scale+cp.sy);
@@ -626,7 +619,7 @@ function scanTorsoSilhouette(topScrY, botScrY, midScrX, halfWidthScr, cp){
   const sc=document.createElement('canvas');
   sc.width=SAMPLE_W;sc.height=SAMPLE_H;
   const sctx=sc.getContext('2d',{willReadFrequently:true});
-  sctx.drawImage(video, xVL,yVidTop, xVR-xVL,rawH, 0,0, SAMPLE_W,SAMPLE_H);
+  sctx.drawImage(scanSource, xVL,yVidTop, xVR-xVL,rawH, 0,0, SAMPLE_W,SAMPLE_H);
   const px=sctx.getImageData(0,0,SAMPLE_W,SAMPLE_H).data;
 
   // Per-pixel luma
@@ -1040,6 +1033,8 @@ function startLoop(){
 
     oc.width=window.innerWidth;oc.height=window.innerHeight;
     ctx.clearRect(0,0,oc.width,oc.height);
+    // Keep dimensions current (video reports 0×0 until first frames arrive)
+    if(video.videoWidth) setScanSource(video);
 
     const cp=getCrop();if(!cp)return;
 
