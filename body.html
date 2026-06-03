@@ -846,8 +846,39 @@ function calcMeas(pose, heightCm){
       }
     }
   }
-  // Fallback hip from joint distance if torso scan failed
-  if(!hipCm&&lh&&rh) hipCm=pxToCm(distS(lh,rh));
+  // ── HYBRID SANITY CHECK ───────────────────────────────────────────────────
+  // Silhouette scanning fails when arms are close to the body (slim build) or
+  // contrast is low (light clothing on light wall). The hip JOINT distance is
+  // always available and provides a reliable floor:
+  //   • Joint-to-joint hip distance × 1.6  ≈ outer hip width  (from real data)
+  //   • Joint-to-joint hip distance × 1.3  ≈ waist width
+  // If the silhouette result is implausibly narrow — i.e. barely wider than the
+  // joints themselves — discard it and use the joint-ratio estimate instead.
+  // Threshold: silhouette < joint_dist × 1.1 means the scan found something
+  // INSIDE the hip joints, which is physically impossible.
+  if(lh&&rh){
+    const jointPx=distS(lh,rh);
+    const jointFloorPx=jointPx*1.1; // anything narrower than this is wrong
+
+    if(hipSil&&hipSil.widthPx<jointFloorPx){
+      // Silhouette implausibly narrow — fall back to joint ratio
+      const fallbackPx=jointPx*1.6;
+      const cx=(hipSil.leftX+hipSil.rightX)/2;
+      hipSil={leftX:cx-fallbackPx/2,rightX:cx+fallbackPx/2,widthPx:fallbackPx,y:hipSil.y,isFallback:true};
+      hipCm=pxToCm(fallbackPx);
+    } else if(!hipCm){
+      // Scan returned nothing — use joint ratio
+      hipCm=pxToCm(jointPx*1.6);
+    }
+
+    if(waistSil&&waistSil.widthPx<jointFloorPx){
+      const fallbackPx=jointPx*1.3;
+      const cx=(waistSil.leftX+waistSil.rightX)/2;
+      waistSil={leftX:cx-fallbackPx/2,rightX:cx+fallbackPx/2,widthPx:fallbackPx,isFallback:true};
+      waistCm=pxToCm(fallbackPx);
+      // keep waistScrY as-is so the bracket still appears at the right height
+    }
+  }
 
   // Torso: mid-shoulder to mid-hip
   let torsoCm=null;
@@ -1036,15 +1067,19 @@ function drawMeasOverlay(meas,c=ctx,W=oc.width){
 
   // ── 3. WAIST — label left ─────────────────────────────────────────────────
   if(meas.waistSil&&meas.waistScrY!=null){
+    if(meas.waistSil.isFallback){c.save();c.setLineDash([5,4]);}
     hBracket(meas.waistSil.leftX, meas.waistSil.rightX, meas.waistScrY,
-      meas.waistCm+' cm','#c8a4e8','left');
+      meas.waistCm+' cm ~','#c8a4e8','left');
+    if(meas.waistSil.isFallback){c.setLineDash([]);c.restore();}
   }
 
   // ── 4. HIP WIDTH — label right ────────────────────────────────────────────
   if(meas.hipSil){
     const hipBY=(meas.hipSil.y??((lh&&rh)?Math.max(lh.y,rh.y):0))+14;
+    if(meas.hipSil.isFallback){c.save();c.setLineDash([5,4]);}
     hBracket(meas.hipSil.leftX, meas.hipSil.rightX, hipBY,
-      meas.hipCm+' cm','#ff9632','right');
+      meas.hipCm+' cm ~','#ff9632','right');
+    if(meas.hipSil.isFallback){c.setLineDash([]);c.restore();}
   } else if(lh&&rh){
     hBracket(lh.x,rh.x,Math.max(lh.y,rh.y)+18,
       meas.hipCm?meas.hipCm+' cm':null,'#ff9632','right');
