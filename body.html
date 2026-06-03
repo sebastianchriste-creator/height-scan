@@ -437,12 +437,19 @@ async function handlePhotoUpload(evt){
     return;
   }
 
-  const meas=calcMeas(pose, knownHeightCm);
+  let meas=null;
+  try{
+    meas=calcMeas(pose, knownHeightCm);
+  }catch(e){
+    console.error('calcMeas error:',e);
+  }
   lastMeas=meas?{...meas}:null;
 
   // Draw skeleton + overlay onto canvas
-  if(pose&&cp) drawSkeleton(pose,cp,ctx);
-  if(meas) drawMeasOverlay(meas,ctx,oc.width);
+  try{
+    if(pose&&cp) drawSkeleton(pose,cp,ctx);
+    if(meas) drawMeasOverlay(meas,ctx,oc.width);
+  }catch(e){console.error('draw error:',e);}
 
   // Capture the annotated canvas
   const cap=document.createElement('canvas');
@@ -457,15 +464,16 @@ async function handlePhotoUpload(evt){
     lastCapturedBlob=blob;
   },'image/jpeg',0.92);
 
-  // Restore scan source to video for any future live scans
+  // Always restore UI state — even if something above threw
   setScanSource(video);
-
-  // Restore scan screen UI
   document.getElementById('stab-ring').style.display='';
   document.getElementById('btn-back').style.display='';
 
   if(meas) showResults(meas,cap);
-  else{alert('Could not compute measurements from this photo. Make sure the full body (head to feet) is visible.');show('screen-intro');}
+  else{
+    alert('Could not compute measurements from this photo. Make sure the full body (head to feet) is visible.');
+    show('screen-intro');
+  }
   URL.revokeObjectURL(url);
 }
 
