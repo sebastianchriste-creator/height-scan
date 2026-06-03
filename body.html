@@ -1161,7 +1161,10 @@ function calcMeas(pose, heightCm){
   // Silhouette finds the narrowest visual point which sits slightly above where
   // people measure with a tape. Confirmed −7.9% bias across P1–P3 (fitted).
   // Apply only when not baggy clothing (which inflates rather than deflates).
-  if(waistCm && !baggyClothing) waistCm=+(waistCm*1.08).toFixed(1);
+  // Apply correction only when reading is genuinely narrow (raw < height × 0.175).
+  // Above that, clothing inflation is likely — correction makes it worse (P10/P12/P14).
+  if(waistCm && !baggyClothing && waistCm < heightCm*0.175)
+    waistCm=+(waistCm*1.08).toFixed(1);
 
   // Torso: mid-shoulder to mid-hip
   // Hard cap: torso / height tops out at ~32% anatomically (P1–P15 dataset).
