@@ -1094,27 +1094,25 @@ function calcMeas(pose,heightCm){
   }
 
   // ── INSEAM ────────────────────────────────────────────────────────────────
-  // MediaPipe hip joints sit lower than MoveNet → hip→ankle distance is shorter.
-  // Observed mean shortfall: ~3cm across P2 (+1.7), P5 (+3.7), P9 (+6.7).
-  // +3cm additive offset brings median error from −4cm to ~−1cm.
+  // MIN_SCORE=0.3 moved hip landmark positions so raw inseam avg (70.7cm) now
+  // matches MoveNet directly — no offset needed.
   let inseamCm=null;
   if(lh&&rh){
     const midHip={x:(lh.x+rh.x)/2,y:(lh.y+rh.y)/2};
     const midAnkle={x:(la_.x+ra_.x)/2,y:(la_.y+ra_.y)/2};
     inseamCm=pxToCm(distS(midHip,midAnkle));
-    if(inseamCm)inseamCm=+(inseamCm+3.0).toFixed(1);
   }
 
   // ── ARM LENGTH ────────────────────────────────────────────────────────────
-  // MediaPipe wrist landmark sits slightly proximal to MoveNet's.
-  // Observed shortfall: ~1.5cm on P2 (55.5 vs GT 57). +2cm additive offset.
+  // MIN_SCORE=0.3 gives raw arm avg 59.8cm vs MoveNet 58.0cm (+1.8cm high).
+  // Subtract 1.8cm to align with MoveNet baseline.
   let armCm=null;
   if(ls&&le_&&lw){
     armCm=pxToCm((distS(ls,le_)||0)+(distS(le_,lw)||0));
   }else if(rs&&re_&&rw){
     armCm=pxToCm((distS(rs,re_)||0)+(distS(re_,rw)||0));
   }
-  if(armCm)armCm=+(armCm+2.0).toFixed(1);
+  if(armCm)armCm=+(armCm-1.8).toFixed(1);
 
   const kpScores=[kps[KP.L_SHOULDER],kps[KP.R_SHOULDER],kps[KP.L_HIP],kps[KP.R_HIP]]
     .filter(Boolean).map(k=>k.score);
