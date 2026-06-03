@@ -597,12 +597,15 @@ function _edgesFromCanvas(sctx, xW, h, xVL, cp){
 }
 
 // ── TORSO SILHOUETTE SCAN ────────────────────────────────────────────────────
-// Samples the entire torso region (shoulder Y → hip Y) in ONE canvas, then
-// scans every row to find per-row left/right silhouette edges.
-// Returns { rows: [{y (screen), leftX, rightX, widthPx}] } or null.
-// Much more reliable than calling detectSilhouetteWidth per row — single
-// getImageData avoids per-call overhead and threshold adapts globally.
-function scanTorsoSilhouette(topScrY, botScrY, midScrX, halfWidthScr, cp){
+// Samples the torso region in ONE canvas, scans every row for the torso edge.
+//
+// ARM MASKING: MoveNet gives us shoulder/elbow/wrist positions. For each row
+// we interpolate the arm X position and restrict edge search to INSIDE the arm,
+// so we find the torso edge rather than the arm edge. This works across body
+// types because it uses the actual detected arm geometry, not a fixed fraction.
+//
+// armKps: { ls, le, lw, rs, re, rw } — screen coords, may be null per point
+function scanTorsoSilhouette(topScrY, botScrY, midScrX, halfWidthScr, cp, armKps){
   if(!scanSrcW)return null;
   const vW=scanSrcW, vH=scanSrcH;
 
@@ -631,34 +634,84 @@ function scanTorsoSilhouette(topScrY, botScrY, midScrX, halfWidthScr, cp){
   for(let i=0;i<SAMPLE_W*SAMPLE_H;i++)
     luma[i]=0.299*px[i*4]+0.587*px[i*4+1]+0.114*px[i*4+2];
 
-  // For each row, find horizontal gradient and locate edges
-  // Blur each row with 3-tap before differencing
+  // ── ARM MASK HELPERS ────────────────────────────────────────────────────
+  // Estimate arm X position at a given screen Y by linear interpolation
+  // along the shoulder→elbow→wrist skeleton segment.
+  function armXatScrY(scrY, kpTop, kpMid, kpBot){
+    if(!kpTop)return null;
+    if(!kpMid)return kpTop.x;
+    if(scrY<=kpTop.y)return kpTop.x;
+    if(scrY<=kpMid.y){
+      const t=(scrY-kpTop.y)/Math.max(1,kpMid.y-kpTop.y);
+      return kpTop.x+t*(kpMid.x-kpTop.x);
+    }
+    if(kpBot&&scrY<=kpBot.y){
+      const t=(scrY-kpMid.y)/Math.max(1,kpBot.y-kpMid.y);
+      return kpMid.x+t*(kpBot.x-kpMid.x);
+    }
+    return kpBot?kpBot.x:kpMid.x;
+  }
+
+  // ARM_HALF: half the arm thickness in screen px used to define the mask band.
+  // ~18px covers most arm widths without being too aggressive.
+  const ARM_HALF=18;
+
+  // For each row, find horizontal gradient and locate TORSO edges.
+  // When arm keypoints are available, mask out the arm X band so we find
+  // the torso edge behind the arm rather than the arm's outer silhouette.
   const rows=[];
-  const BLEND=3; // rows to average for stability
+  const BLEND=3;
   for(let sy=BLEND;sy<SAMPLE_H-BLEND;sy++){
-    // Average BLEND rows above+below for robustness
     const rowL=new Float32Array(SAMPLE_W);
     for(let dy=-BLEND;dy<=BLEND;dy++)
       for(let x=0;x<SAMPLE_W;x++) rowL[x]+=luma[(sy+dy)*SAMPLE_W+x];
     for(let x=0;x<SAMPLE_W;x++) rowL[x]/=(2*BLEND+1);
 
-    // Gradient
     const g=new Float32Array(SAMPLE_W);
     for(let x=1;x<SAMPLE_W-1;x++) g[x]=Math.abs(rowL[x+1]-rowL[x-1])/2;
     let maxG=0;for(let x=0;x<SAMPLE_W;x++) maxG=Math.max(maxG,g[x]);
     if(maxG<1.5)continue;
-    const thr=Math.max(maxG*0.20, 1.0);
+    const thr=Math.max(maxG*0.20,1.0);
 
-    let lIdx=-1,rIdx=-1;
-    for(let x=0;x<SAMPLE_W;x++){if(g[x]>=thr){lIdx=x;break;}}
-    for(let x=SAMPLE_W-1;x>=0;x--){if(g[x]>=thr){rIdx=x;break;}}
+    // Map this sample row → screen Y → arm X positions
+    const scrY=topScrY+(sy/SAMPLE_H)*(botScrY-topScrY);
+
+    // Arm mask bounds in SAMPLE_W coords
+    let leftMaskR=0, rightMaskL=SAMPLE_W; // default: no mask
+    if(armKps){
+      const lArmX=armXatScrY(scrY, armKps.ls, armKps.le, armKps.lw);
+      const rArmX=armXatScrY(scrY, armKps.rs, armKps.re, armKps.rw);
+      if(lArmX!=null){
+        // Left arm X in sample coords
+        const lSamp=(((lArmX/cp.scale+cp.sx)-xVL)/scaleX);
+        leftMaskR=Math.round(lSamp+ARM_HALF/scaleX); // search for left torso edge to the RIGHT of arm
+      }
+      if(rArmX!=null){
+        const rSamp=(((rArmX/cp.scale+cp.sx)-xVL)/scaleX);
+        rightMaskL=Math.round(rSamp-ARM_HALF/scaleX); // search for right torso edge to the LEFT of arm
+      }
+    }
+
+    // Left torso edge: scan right-to-left from leftMaskR inward
+    // (we want the torso's left edge, which is just inside the left arm)
+    let lIdx=-1;
+    const lStart=Math.min(leftMaskR, Math.floor(SAMPLE_W*0.5)-2);
+    for(let x=lStart;x>=0;x--){if(g[x]>=thr){lIdx=x;break;}}
+
+    // Right torso edge: scan left-to-right from rightMaskL inward
+    let rIdx=-1;
+    const rStart=Math.max(rightMaskL, Math.ceil(SAMPLE_W*0.5)+2);
+    for(let x=rStart;x<SAMPLE_W;x++){if(g[x]>=thr){rIdx=x;break;}}
+
+    // Fallback: if arm masking finds nothing, use outermost edges
+    if(lIdx<0) for(let x=0;x<SAMPLE_W;x++){if(g[x]>=thr){lIdx=x;break;}}
+    if(rIdx<0) for(let x=SAMPLE_W-1;x>=0;x--){if(g[x]>=thr){rIdx=x;break;}}
+
     if(lIdx<0||rIdx<=lIdx)continue;
 
-    // Map sample coords back to screen coords
-    const scrY=topScrY+(sy/SAMPLE_H)*(botScrY-topScrY);
-    const vidXL=xVL+lIdx*scaleX, vidXR=xVL+rIdx*scaleX;
-    const scrXL=(vidXL-cp.sx)*cp.scale;
-    const scrXR=(vidXR-cp.sx)*cp.scale;
+    const vidXL2=xVL+lIdx*scaleX, vidXR2=xVL+rIdx*scaleX;
+    const scrXL=(vidXL2-cp.sx)*cp.scale;
+    const scrXR=(vidXR2-cp.sx)*cp.scale;
     rows.push({y:scrY, leftX:scrXL, rightX:scrXR, widthPx:scrXR-scrXL});
   }
   return rows.length>=4?rows:null;
@@ -763,43 +816,33 @@ function calcMeas(pose, heightCm){
     // Extend scan slightly below hip joints for hip flare
     const scanBot=hipY+torsoH*0.25;
 
-    const rows=scanTorsoSilhouette(shY, scanBot, midX, halfW, cp);
-
-    // Helper: nth-percentile of a sorted numeric array
-    function pct(sorted,p){
-      const i=Math.max(0,Math.min(sorted.length-1,Math.floor(sorted.length*p)));
-      return sorted[i];
-    }
+    // Pass arm keypoints so each row can mask the arm before finding torso edge
+    const armKps={ls,le:kpS(KP.L_ELBOW),lw:kpS(KP.L_WRIST),rs,re:kpS(KP.R_ELBOW),rw:kpS(KP.R_WRIST)};
+    const rows=scanTorsoSilhouette(shY, scanBot, midX, halfW, cp, armKps);
 
     if(rows&&rows.length>=4){
-      // ── Waist: 35th-percentile width in the upper 60% of the torso ──────
-      // 35th percentile = consistently narrow, but arm-contaminated rows (wider)
-      // don't pull the value up the way plain minimum does.
-      // Floor: ≥ 55% of shoulder width to reject belt-gap artifacts.
+      // Waist: narrowest row in the upper 60% of torso.
+      // Arm masking means these rows already exclude the arms, so plain min is fine.
+      // Floor: ≥ 55% of shoulder width to reject belt-gap / shirt-hem artifacts.
       const waistZoneBot=shY+torsoH*0.60;
       const waistMin=shoulderPx*0.55;
-      const waistRows=rows
-        .filter(r=>r.y>shY+10&&r.y<waistZoneBot&&r.widthPx>=waistMin)
-        .sort((a,b)=>a.widthPx-b.widthPx);
-      if(waistRows.length>=3){
-        const chosen=waistRows[Math.floor(waistRows.length*0.35)];
-        waistCm=pxToCm(chosen.widthPx);
-        waistSil={leftX:chosen.leftX,rightX:chosen.rightX,widthPx:chosen.widthPx};
-        waistScrY=chosen.y;
+      const waistRows=rows.filter(r=>r.y>shY+10&&r.y<waistZoneBot&&r.widthPx>=waistMin);
+      if(waistRows.length>=2){
+        const best=waistRows.reduce((a,b)=>b.widthPx<a.widthPx?b:a);
+        waistCm=pxToCm(best.widthPx);
+        waistSil={leftX:best.leftX,rightX:best.rightX,widthPx:best.widthPx};
+        waistScrY=best.y;
       }
 
-      // ── Hip: 65th-percentile width in the lower 50% + below-joint zone ──
-      // 65th percentile = consistently wide, but single arm rows don't win.
-      // Ceiling: ≤ shoulder width (wider = arm contamination).
+      // Hip: widest row in the lower 50% + below-joint zone.
+      // Ceiling: ≤ shoulder width (safety net for edge cases).
       const hipZoneTop=shY+torsoH*0.50;
       const hipMax=shoulderPx*1.05;
-      const hipRows=rows
-        .filter(r=>r.y>hipZoneTop&&r.widthPx<=hipMax)
-        .sort((a,b)=>a.widthPx-b.widthPx);
-      if(hipRows.length>=3){
-        const chosen=hipRows[Math.floor(hipRows.length*0.65)];
-        hipCm=pxToCm(chosen.widthPx);
-        hipSil={leftX:chosen.leftX,rightX:chosen.rightX,widthPx:chosen.widthPx,y:chosen.y};
+      const hipRows=rows.filter(r=>r.y>hipZoneTop&&r.widthPx<=hipMax);
+      if(hipRows.length>=2){
+        const best=hipRows.reduce((a,b)=>b.widthPx>a.widthPx?b:a);
+        hipCm=pxToCm(best.widthPx);
+        hipSil={leftX:best.leftX,rightX:best.rightX,widthPx:best.widthPx,y:best.y};
       }
     }
   }
