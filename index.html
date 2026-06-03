@@ -1717,13 +1717,13 @@ async function processBatchPhoto(file, heightCm){
     }
   }catch(e){}
 
-  setScanSource(video);
   URL.revokeObjectURL(url);
 
-  if(!pose) return {error:'No pose detected'};
+  if(!pose){setScanSource(video);return{error:'No pose detected'};}
   let meas=null;
-  try{meas=calcMeas(pose,heightCm);}catch(e){return{error:e.message};}
-  if(!meas) return {error:'Could not compute measurements'};
+  try{meas=calcMeas(pose,heightCm);}catch(e){setScanSource(video);return{error:e.message};}
+  setScanSource(video); // reset AFTER calcMeas so getCrop() still sees image dimensions
+  if(!meas) return{error:'Could not compute measurements'};
 
   return {
     shoulder:meas.shoulderCm, waist:meas.waistCm, hip:meas.hipCm,
