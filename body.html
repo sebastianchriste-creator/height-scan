@@ -359,7 +359,11 @@ async function handlePhotoUpload(evt){
   const file=evt.target.files[0];
   if(!file)return;
   knownHeightCm=getHeightCm();
-  if(knownHeightCm<100||knownHeightCm>250)return;
+  if(knownHeightCm<100||knownHeightCm>250){
+    alert('Please enter your height (100–250 cm) before uploading a photo.');
+    show('screen-intro');
+    return;
+  }
 
   // Load image
   const url=URL.createObjectURL(file);
