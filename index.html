@@ -814,19 +814,25 @@ function calcMeas(pose, heightCm){
   const ra_=kpS(KP.R_ANKLE)||la_;
 
   // Shoulder width — silhouette scan at shoulder Y level for outer (garment) width.
-  // Fall back to joint distance if silhouette scan fails.
+  // Falls back to joint distance, then to height-proportional estimate if needed.
   let shoulderCm=null, shoulderSil=null;
   if(ls&&rs){
     const shY=(ls.y+rs.y)/2;
     const jDist=distS(ls,rs);
     const midX=(ls.x+rs.x)/2;
-    // Search window: joint centre ± 1.6× joint distance (wide enough for jackets)
     const sil=detectSilhouetteWidth(shY,cp, midX-jDist*1.6, midX+jDist*1.6);
     if(sil&&sil.widthPx>20){
       shoulderCm=pxToCm(sil.widthPx);
       shoulderSil=sil;
     } else {
       shoulderCm=pxToCm(jDist);
+    }
+    // Sanity check: shoulder < 22% of height = silhouette/joint both failed
+    // (light clothing on light background). Fall back to height proportion:
+    // adult shoulder width ≈ 24.5% of height across most body types.
+    if(shoulderCm < heightCm*0.22){
+      shoulderCm=+(heightCm*0.245).toFixed(1);
+      shoulderSil=null; // mark as estimated so overlay shows no silhouette bracket
     }
   }
 
