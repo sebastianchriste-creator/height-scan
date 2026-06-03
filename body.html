@@ -1012,9 +1012,12 @@ function calcMeas(pose, heightCm){
     const shY=(ls.y+rs.y)/2;
     const jDist=distS(ls,rs);
     const midX=(ls.x+rs.x)/2;
-    // Use a tighter window — jDist×1.2 from centre keeps us close to the
-    // actual shoulder seam without including the arm beyond it.
-    const sil=detectSilhouetteWidth(shY,cp, midX-jDist*1.2, midX+jDist*1.2);
+    // Outward scan from joint positions — finds the shoulder tip, not the arm.
+    // MoveNet L_SHOULDER = person's left = image RIGHT (larger x) → seed for right edge
+    // MoveNet R_SHOULDER = person's right = image LEFT (smaller x) → seed for left edge
+    // Window is wider (×1.5) so the strip captures the scene; seeds constrain
+    // where we START scanning so we don't pick up the arm beyond the shoulder.
+    const sil=detectSilhouetteWidth(shY,cp, midX-jDist*1.5, midX+jDist*1.5, rs.x, ls.x);
     if(sil&&sil.widthPx>20){
       shoulderCm=pxToCm(sil.widthPx);
       shoulderSil=sil;
