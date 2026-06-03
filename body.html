@@ -1616,19 +1616,34 @@ function downloadCapture(){
 // ── BATCH TEST ────────────────────────────────────────────────────────────────
 let batchFiles=[], batchResults=[];
 
+// Known heights for test persons — auto-filled when filename matches P1–P15
+const KNOWN_HEIGHTS={
+  'p1':175,'p2':177,'p3':183,'p4':183,'p5':192,
+  'p6':188,'p7':172,'p8':180,'p9':171,'p10':176,
+  'p11':174,'p12':175,'p13':178,'p14':178,'p15':186
+};
+
+function guessHeight(filename){
+  // Strip extension, lowercase, try to match P1-P15
+  const base=filename.replace(/\.[^.]+$/,'').toLowerCase().trim();
+  return KNOWN_HEIGHTS[base]||null;
+}
+
 function handleBatchFiles(evt){
   batchFiles=Array.from(evt.target.files);
   if(!batchFiles.length)return;
   const list=document.getElementById('batch-file-list');
   list.innerHTML='';
   batchFiles.forEach((f,i)=>{
+    const preset=guessHeight(f.name);
     const row=document.createElement('div');
     row.style.cssText='display:flex;align-items:center;gap:10px;background:rgba(255,255,255,0.04);border:1px solid rgba(255,255,255,0.08);border-radius:10px;padding:10px 12px';
     row.innerHTML=`
       <div style="flex:1;font-size:12px;color:rgba(255,255,255,0.7);overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${f.name}</div>
       <div style="display:flex;align-items:baseline;gap:4px;flex-shrink:0">
-        <input type="number" id="batch-h-${i}" inputmode="numeric" min="100" max="250" placeholder="cm"
-          style="width:60px;background:rgba(255,255,255,0.08);border:1px solid rgba(255,255,255,0.2);border-radius:8px;color:#fff;font-size:14px;font-weight:600;padding:6px 8px;text-align:center;outline:none">
+        <input type="number" id="batch-h-${i}" inputmode="numeric" min="100" max="250"
+          placeholder="cm" value="${preset||''}"
+          style="width:60px;background:rgba(255,255,255,0.08);border:1px solid ${preset?'rgba(126,200,227,0.5)':'rgba(255,255,255,0.2)'};border-radius:8px;color:${preset?'#7ec8e3':'#fff'};font-size:14px;font-weight:600;padding:6px 8px;text-align:center;outline:none">
         <span style="font-size:11px;color:rgba(255,255,255,0.4)">cm</span>
       </div>`;
     list.appendChild(row);
