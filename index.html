@@ -552,7 +552,7 @@ function v2s(vx,vy,cp){return{x:(vx-cp.sx)*cp.scale,y:(vy-cp.sy)*cp.scale};}
 // guardLeft/guardRight in screen px constrain the search window.
 function detectSilhouetteWidth(yScrCenter, cp, guardLeft, guardRight){
   if(!scanSrcW)return null;
-  const STRIP_H=20, vW=scanSrcW, vH=scanSrcH;
+  const STRIP_H=32, vW=scanSrcW, vH=scanSrcH; // taller strip = more rows averaged = less noise at low contrast
   const yVid=yScrCenter/cp.scale+cp.sy;
   if(yVid<STRIP_H/2||yVid>vH-STRIP_H/2)return null;
   const xVL=Math.max(0,  guardLeft /cp.scale+cp.sx);
@@ -585,8 +585,8 @@ function _edgesFromCanvas(sctx, xW, h, xVL, cp){
   for(let x=2;x<xW-2;x++)gradS[x]=(grad[x-2]+2*grad[x-1]+3*grad[x]+2*grad[x+1]+grad[x+2])/10;
   let maxG=0;
   for(let x=0;x<xW;x++)maxG=Math.max(maxG,gradS[x]);
-  if(maxG<2)return null; // lowered threshold
-  const thr=Math.max(maxG*0.25, 1.5);
+  if(maxG<0.8)return null; // very low minimum — handles beige shirt on light wall
+  const thr=Math.max(maxG*0.20, 0.6); // 20% of peak, handles low-contrast edges
   let leftIdx=-1,rightIdx=-1;
   for(let x=0;x<xW;x++){if(gradS[x]>=thr){leftIdx=x;break;}}
   for(let x=xW-1;x>=0;x--){if(gradS[x]>=thr){rightIdx=x;break;}}
