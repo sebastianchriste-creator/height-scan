@@ -1029,6 +1029,13 @@ function calcMeas(pose, heightCm){
       shoulderCm=+(heightCm*0.245).toFixed(1);
       shoulderSil=null;
     }
+    // Too wide: arms included in silhouette scan. Cap at height × 0.285.
+    // Dataset max legitimate ratio: P1=0.286, P9=0.287 — anything above this
+    // is arm contamination. Cap to height × 0.275 (dataset average).
+    if(shoulderCm > heightCm*0.285){
+      shoulderCm=+(heightCm*0.275).toFixed(1);
+      shoulderSil=null;
+    }
   }
 
   // ── BAGGINESS DETECTION ───────────────────────────────────────────────────
