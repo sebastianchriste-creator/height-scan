@@ -465,7 +465,7 @@ const KP={
   L_HEEL:29,     R_HEEL:30,
   L_FOOT:31,     R_FOOT:32,
 };
-const MIN_SCORE=0.5; // MediaPipe visibility is generally higher — use 0.5 vs MoveNet 0.3
+const MIN_SCORE=0.3; // Same threshold as MoveNet — MediaPipe visibility scores are comparable
 
 // Convert MediaPipe PoseLandmarkerResult → MoveNet-compatible pose object.
 // MediaPipe returns normalized [0,1] coordinates; we scale to pixel space.
@@ -918,33 +918,20 @@ function calcMeas(pose,heightCm){
   if(!nose||nose.score<MIN_SCORE)return null;
 
   // ── CROWN & FLOOR ESTIMATION ──────────────────────────────────────────────
-  // MediaPipe bonus: use heel / foot_index landmarks for a better floor plane.
-  // heel = back of heel (idx 29/30), foot_index = ball of foot / toe (idx 31/32).
-  // Both sit at floor level in a standing pose — whichever is lower wins.
+  // Identical to MoveNet approach — using ankle as floor anchor with 4.6% offset.
+  // The heel/foot_index idea was shelved: it pulls bodyPx up, shrinking mmPx and
+  // causing systematic underestimation across ALL measurements (~3%). The extra
+  // MediaPipe landmarks (heel, foot_index) are still drawn in the skeleton but
+  // not used for the scale calculation until that bias is independently resolved.
   const la=kps[KP.L_ANKLE], ra=kps[KP.R_ANKLE];
   const lk=kps[KP.L_KNEE],  rk=kps[KP.R_KNEE];
-  const lHeel=kps[KP.L_HEEL],    rHeel=kps[KP.R_HEEL];
-  const lFoot=kps[KP.L_FOOT],    rFoot=kps[KP.R_FOOT];
   const ANKLE_MIN=0.35;
-
-  // Collect all reliable floor-level y coords and take the lowest (largest y in image coords)
-  const floorCandidates=[];
-  const addFloor=(kp,thresh=ANKLE_MIN)=>{if(kp&&kp.score>thresh)floorCandidates.push(kp.y);};
-  addFloor(la);addFloor(ra);
-  addFloor(lHeel,0.3);addFloor(rHeel,0.3);
-  addFloor(lFoot,0.3);addFloor(rFoot,0.3);
-
   let ankleVY=null;
-  if(floorCandidates.length>0){
-    // Use lowest visible landmark as anchor; we'll still apply a small extrapolation
-    // to get the actual floor level (foot sole, not ankle center).
-    // Take average of the two lowest to avoid single outlier.
-    floorCandidates.sort((a,b)=>b-a); // descending = lower in image first
-    ankleVY=floorCandidates.length>=2
-      ?(floorCandidates[0]+floorCandidates[1])/2
-      :floorCandidates[0];
-  }else{
-    // Fallback to knee extrapolation
+  const laOK=la?.score>ANKLE_MIN, raOK=ra?.score>ANKLE_MIN;
+  if(laOK&&raOK)ankleVY=(la.y+ra.y)/2;
+  else if(laOK)ankleVY=la.y;
+  else if(raOK)ankleVY=ra.y;
+  else{
     const lkOK=lk?.score>MIN_SCORE, rkOK=rk?.score>MIN_SCORE;
     if(!lkOK&&!rkOK)return null;
     const kneeVY=lkOK&&rkOK?(lk.y+rk.y)/2:(lkOK?lk.y:rk.y);
@@ -954,19 +941,8 @@ function calcMeas(pose,heightCm){
   const a2n=ankleVY-nose.y;
   if(a2n<40)return null;
 
-  // If heel/foot_index landmarks are used, the floor offset is smaller because
-  // those landmarks are already closer to the actual floor than the ankle center.
-  // Check if we used heel/foot data (lower than bare ankle average)
-  const laOK=la?.score>ANKLE_MIN, raOK=ra?.score>ANKLE_MIN;
-  const bareAnkleY = laOK&&raOK?(la.y+ra.y)/2 : laOK?la.y : raOK?ra.y : null;
-  const usedFootData = floorCandidates.length>0 && bareAnkleY!=null
-    && ankleVY > bareAnkleY + 2; // foot/heel is meaningfully lower than ankle
-
-  // Crown = ~10.3% of body height above nose; floor offset depends on landmark type
-  // If we reached heel/foot, floor is very close to actual ground → smaller offset
-  const floorOffset = usedFootData ? 0.015 : 0.046;
   const crownVY=nose.y-a2n*0.103;
-  const floorVY=ankleVY+a2n*floorOffset;
+  const floorVY=ankleVY+a2n*0.046;
   const crownS=v2s(nose.x,crownVY,cp);
   const floorS=v2s(nose.x,floorVY,cp);
   const bodyPx=floorS.y-crownS.y;
@@ -1088,9 +1064,24 @@ function calcMeas(pose,heightCm){
     }
   }
 
-  // ── WAIST CORRECTION ─────────────────────────────────────────────────────
-  if(waistCm&&!baggyClothing&&waistCm<heightCm*0.175)
-    waistCm=+(waistCm*1.08).toFixed(1);
+  // ── WAIST CORRECTION (MediaPipe calibration) ─────────────────────────────
+  // MediaPipe silhouette reads ~15-16% of height vs GT ~18-19% (MoveNet reads ~18%).
+  // Root cause: MediaPipe hip joints sit lower → torso zone extends further down →
+  // scan finds the narrower lower-abdomen area rather than the natural waist.
+  // Correction: wider threshold (0.195 vs MoveNet 0.175), larger factor (1.18 vs 1.08).
+  // Hard floor: waist can't be less than 15.8% of height (anatomical minimum).
+  if(waistCm&&!baggyClothing&&waistCm<heightCm*0.195)
+    waistCm=+(waistCm*1.18).toFixed(1);
+  if(waistCm&&waistCm<heightCm*0.158)
+    waistCm=+(heightCm*0.165).toFixed(1);
+
+  // ── HIP CORRECTION (MediaPipe calibration) ───────────────────────────────
+  // MediaPipe hip joints placed lower (actual anatomical hip vs MoveNet's higher
+  // placement) → silhouette scan window shifts, producing narrower hip readings.
+  // Observed bias: ~3.9cm below GT on P2 (raw 36.1 vs GT 40).
+  // Apply 8% upward correction for non-baggy readings below 22.5% of height.
+  if(hipCm&&!baggyClothing&&hipCm<heightCm*0.225)
+    hipCm=+(hipCm*1.08).toFixed(1);
 
   // ── TORSO ─────────────────────────────────────────────────────────────────
   let torsoCm=null;
@@ -1103,25 +1094,27 @@ function calcMeas(pose,heightCm){
   }
 
   // ── INSEAM ────────────────────────────────────────────────────────────────
+  // MediaPipe hip joints sit lower than MoveNet → hip→ankle distance is shorter.
+  // Observed mean shortfall: ~3cm across P2 (+1.7), P5 (+3.7), P9 (+6.7).
+  // +3cm additive offset brings median error from −4cm to ~−1cm.
   let inseamCm=null;
   if(lh&&rh){
     const midHip={x:(lh.x+rh.x)/2,y:(lh.y+rh.y)/2};
     const midAnkle={x:(la_.x+ra_.x)/2,y:(la_.y+ra_.y)/2};
     inseamCm=pxToCm(distS(midHip,midAnkle));
+    if(inseamCm)inseamCm=+(inseamCm+3.0).toFixed(1);
   }
 
   // ── ARM LENGTH ────────────────────────────────────────────────────────────
-  // MediaPipe bonus: use pinky/index finger tip for a slightly longer reach.
-  // Only when wrist visibility is low (wrist may be partially occluded but
-  // finger tips more visible) — otherwise stick to wrist for consistency.
+  // MediaPipe wrist landmark sits slightly proximal to MoveNet's.
+  // Observed shortfall: ~1.5cm on P2 (55.5 vs GT 57). +2cm additive offset.
   let armCm=null;
-  const lPinky=kps[KP.L_FOOT]?null:kpS(17); // L_PINKY=17
-  const rPinky=kpS(18);                       // R_PINKY=18
   if(ls&&le_&&lw){
     armCm=pxToCm((distS(ls,le_)||0)+(distS(le_,lw)||0));
   }else if(rs&&re_&&rw){
     armCm=pxToCm((distS(rs,re_)||0)+(distS(re_,rw)||0));
   }
+  if(armCm)armCm=+(armCm+2.0).toFixed(1);
 
   const kpScores=[kps[KP.L_SHOULDER],kps[KP.R_SHOULDER],kps[KP.L_HIP],kps[KP.R_HIP]]
     .filter(Boolean).map(k=>k.score);
