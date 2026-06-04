@@ -187,6 +187,43 @@
     .fit-option.selected .fit-check{opacity:1;}
     .fit-icon{width:64px;height:72px;object-fit:contain;flex-shrink:0;border-radius:8px;}
 
+    /* ── ANALYZING SCREEN ── */
+    .analyzing-wrap{display:flex;flex-direction:column;align-items:center;justify-content:center;height:100%;gap:0;background:#0d0d0d;padding:0 24px}
+    .analyzing-title{font-size:26px;font-weight:700;text-align:center;margin-bottom:4px}
+    .analyzing-sub{font-size:14px;color:rgba(255,255,255,0.4);margin-bottom:32px;text-align:center}
+    .analyzing-figure{perspective:600px}
+
+    @keyframes figureRock{
+      0%,100%{transform:perspective(600px) rotateY(-10deg)}
+      50%{transform:perspective(600px) rotateY(10deg)}
+    }
+    @keyframes beamSweep{
+      0%{transform:translateY(5px);opacity:0}
+      8%{opacity:1}
+      92%{opacity:1}
+      100%{transform:translateY(258px);opacity:0}
+    }
+    @keyframes tickPulse{
+      0%,100%{opacity:0.25}50%{opacity:0.9}
+    }
+    @keyframes dotBounce{
+      0%,100%{transform:translateY(0);opacity:.35}
+      50%{transform:translateY(-7px);opacity:1}
+    }
+    .analyzing-svg{animation:figureRock 4s ease-in-out infinite}
+    .scan-beam-g{animation:beamSweep 2.2s ease-in-out infinite}
+    .t-shoulder{animation:tickPulse 2.2s ease-in-out .35s infinite}
+    .t-chest   {animation:tickPulse 2.2s ease-in-out .65s infinite}
+    .t-waist   {animation:tickPulse 2.2s ease-in-out .95s infinite}
+    .t-hip     {animation:tickPulse 2.2s ease-in-out 1.2s infinite}
+    .analyzing-dots{display:flex;gap:8px;margin-top:32px}
+    .analyzing-dots span{
+      display:inline-block;width:8px;height:8px;border-radius:50%;background:#7ec8e3;
+    }
+    .analyzing-dots span:nth-child(1){animation:dotBounce 1.1s ease-in-out 0s infinite}
+    .analyzing-dots span:nth-child(2){animation:dotBounce 1.1s ease-in-out .18s infinite}
+    .analyzing-dots span:nth-child(3){animation:dotBounce 1.1s ease-in-out .36s infinite}
+
     /* ── PREVIEW DOWNLOAD BUTTON ── */
     #btn-dl-preview{
       position:absolute;bottom:10px;left:10px;z-index:2;
@@ -508,6 +545,60 @@
 
 <div id="profile-saved-toast"></div>
 
+<!-- ── SCREEN: ANALYZING ── -->
+<div id="screen-analyzing" class="screen">
+  <div class="analyzing-wrap">
+    <div style="font-size:13px;font-weight:700;letter-spacing:.18em;color:rgba(255,255,255,0.3);text-transform:uppercase;margin-bottom:10px">Body Scan</div>
+    <h2 class="analyzing-title">Analyzing your scan</h2>
+    <p class="analyzing-sub">Measuring your body proportions</p>
+
+    <div class="analyzing-figure">
+      <svg class="analyzing-svg" viewBox="0 0 120 275" width="140" height="320">
+        <defs>
+          <linearGradient id="beamGrad" x1="0" y1="0" x2="0" y2="1">
+            <stop offset="0%"   stop-color="#7ec8e3" stop-opacity="0"/>
+            <stop offset="35%"  stop-color="#7ec8e3" stop-opacity="0.85"/>
+            <stop offset="65%"  stop-color="#7ec8e3" stop-opacity="0.85"/>
+            <stop offset="100%" stop-color="#7ec8e3" stop-opacity="0"/>
+          </linearGradient>
+        </defs>
+
+        <!-- Head -->
+        <circle cx="60" cy="26" r="18" fill="rgba(126,200,227,0.10)" stroke="#7ec8e3" stroke-width="1.5"/>
+        <!-- Neck -->
+        <path d="M53,44 L67,44 L65,57 L55,57 Z" fill="rgba(126,200,227,0.10)" stroke="#7ec8e3" stroke-width="1.3"/>
+        <!-- Torso -->
+        <path d="M30,57 L90,57 L84,135 L78,172 L42,172 L36,135 Z"
+              fill="rgba(126,200,227,0.08)" stroke="#7ec8e3" stroke-width="1.5" stroke-linejoin="round"/>
+        <!-- Left arm -->
+        <path d="M30,62 Q16,98 13,138" fill="none" stroke="#7ec8e3" stroke-width="1.4" stroke-linecap="round"/>
+        <!-- Right arm -->
+        <path d="M90,62 Q104,98 107,138" fill="none" stroke="#7ec8e3" stroke-width="1.4" stroke-linecap="round"/>
+        <!-- Left leg -->
+        <path d="M48,172 Q45,215 44,258" fill="none" stroke="#7ec8e3" stroke-width="1.4" stroke-linecap="round"/>
+        <!-- Right leg -->
+        <path d="M72,172 Q75,215 76,258" fill="none" stroke="#7ec8e3" stroke-width="1.4" stroke-linecap="round"/>
+
+        <!-- Measurement guide lines (pulsing) -->
+        <line class="t-shoulder" x1="22" y1="62"  x2="98"  y2="62"  stroke="#7ec8e3" stroke-width="0.8" stroke-dasharray="3,3"/>
+        <line class="t-chest"    x1="24" y1="90"  x2="96"  y2="90"  stroke="#5dd9c1" stroke-width="0.8" stroke-dasharray="3,3"/>
+        <line class="t-waist"    x1="28" y1="122" x2="92"  y2="122" stroke="#c8a4e8" stroke-width="0.8" stroke-dasharray="3,3"/>
+        <line class="t-hip"      x1="26" y1="155" x2="94"  y2="155" stroke="#ff9632" stroke-width="0.8" stroke-dasharray="3,3"/>
+
+        <!-- Scan beam (animated) -->
+        <g class="scan-beam-g">
+          <rect x="8" y="-8" width="104" height="16" rx="8" fill="url(#beamGrad)" opacity="0.6"/>
+          <line x1="8" y1="0" x2="112" y2="0" stroke="#7ec8e3" stroke-width="1.5" opacity="0.9"/>
+        </g>
+      </svg>
+    </div>
+
+    <div class="analyzing-dots">
+      <span></span><span></span><span></span>
+    </div>
+  </div>
+</div>
+
 <!-- ── FULLSCREEN IMAGE VIEWER ── -->
 <div id="img-viewer">
   <button id="img-viewer-close" onclick="closeViewer()">✕</button>
@@ -687,10 +778,9 @@ async function handlePhotoUpload(evt){
   const img=new Image();
   await new Promise((res,rej)=>{img.onload=res;img.onerror=rej;img.src=url;});
 
-  // Show scan screen as loading state
-  show('screen-scan');
-  document.getElementById('instr-text').textContent='Analysing photo…';
-  document.getElementById('instr-sub').textContent='';
+  // Show analyzing animation while processing
+  show('screen-analyzing');
+  const t0=Date.now();
   document.getElementById('stab-ring').style.display='none';
   document.getElementById('btn-back').style.display='none';
 
@@ -782,10 +872,13 @@ async function handlePhotoUpload(evt){
   document.getElementById('stab-ring').style.display='';
   document.getElementById('btn-back').style.display='';
 
-  if(meas) showResults(meas,cap);
+  const wait=Math.max(0,1800-(Date.now()-t0));
+  if(meas) setTimeout(()=>showResults(meas,cap), wait);
   else{
-    alert('Could not compute measurements from this photo. Make sure the full body (head to feet) is visible.');
-    show('screen-intro');
+    setTimeout(()=>{
+      alert('Could not compute measurements from this photo. Make sure the full body (head to feet) is visible.');
+      show('screen-intro');
+    }, wait);
   }
   URL.revokeObjectURL(url);
 }
@@ -1937,6 +2030,10 @@ function startLoop(){
 function doCapture(meas,cp){
   if('vibrate'in navigator)navigator.vibrate([40,20,80]);
 
+  // Show analyzing animation while we process
+  show('screen-analyzing');
+  const t0=Date.now();
+
   const cap=document.createElement('canvas');
   cap.width=oc.width;cap.height=oc.height;
   const c=cap.getContext('2d');
@@ -1949,18 +2046,18 @@ function doCapture(meas,cp){
   renderBodyModel(meas,c,cap.width,cap.height);
   // 4. Full measurement overlay on top
   drawMeasOverlay(meas,c,cap.width);
-
-  // 4. Bottom info bar
+  // 5. Bottom info bar
   drawInfoBar(c,meas,cap.width,cap.height);
 
-  // Store dataURL for instant viewer access
   lastCapturedDataURL=cap.toDataURL('image/jpeg',0.92);
 
   cap.toBlob(blob=>{
     capturedImageBlob=blob;
     lastCapturedBlob=blob;
     updateLastBtn();
-    showResults(meas,cap);
+    // Minimum 1.8 s on the analyzing screen so the animation reads
+    const wait=Math.max(0, 1800-(Date.now()-t0));
+    setTimeout(()=>showResults(meas,cap), wait);
   },'image/jpeg',0.92);
 }
 
