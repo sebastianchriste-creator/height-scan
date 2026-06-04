@@ -271,6 +271,7 @@
             <th style="padding:10px 8px;text-align:left;color:rgba(255,255,255,0.5);font-weight:600;white-space:nowrap">Photo</th>
             <th style="padding:10px 8px;color:rgba(255,255,255,0.5);font-weight:600">H</th>
             <th style="padding:10px 8px;color:rgba(255,255,255,0.5);font-weight:600">Shoulder</th>
+            <th style="padding:10px 8px;color:#5dd9c1;font-weight:600">Chest</th>
             <th style="padding:10px 8px;color:rgba(255,255,255,0.5);font-weight:600">Waist</th>
             <th style="padding:10px 8px;color:rgba(255,255,255,0.5);font-weight:600">Hip</th>
             <th style="padding:10px 8px;color:rgba(255,255,255,0.5);font-weight:600">Torso</th>
@@ -1056,6 +1057,7 @@ function calcMeas(pose, heightCm){
   // this prevents picking up arms that hang beside the body.
   let hipCm=null, hipSil=null;
   let waistCm=null, waistSil=null, waistScrY=null;
+  let chestCm=null, chestSil=null, chestScrY=null;
 
   if(ls&&rs&&lh&&rh){
     const shY=(ls.y+rs.y)/2;
@@ -1082,6 +1084,22 @@ function calcMeas(pose, heightCm){
     const rows=scanTorsoSilhouette(shY, scanBot, midX, halfW, cp, armKps);
 
     if(rows&&rows.length>=4){
+      // Chest: widest row in the 15–40% zone of the torso.
+      // Below the armhole seam, above the natural waist — this is the chest/pectoral level.
+      // Arm masking in scanTorsoSilhouette already excludes the arms from each row,
+      // so the widest row here reliably finds the chest silhouette.
+      // Floor: ≥ 65% of shoulder joint width (chest can't be narrower than ~⅔ of shoulders).
+      const chestZoneTop=shY+torsoH*0.15;
+      const chestZoneBot=shY+torsoH*0.40;
+      const chestMin=shoulderPx*0.65;
+      const chestRows=rows.filter(r=>r.y>chestZoneTop&&r.y<chestZoneBot&&r.widthPx>=chestMin);
+      if(chestRows.length>=2){
+        const best=chestRows.reduce((a,b)=>b.widthPx>a.widthPx?b:a);
+        chestCm=pxToCm(best.widthPx);
+        chestSil={leftX:best.leftX,rightX:best.rightX,widthPx:best.widthPx};
+        chestScrY=best.y;
+      }
+
       // Waist: narrowest row in the upper 60% of torso.
       // Arm masking means these rows already exclude the arms, so plain min is fine.
       // Floor: ≥ 55% of shoulder width to reject belt-gap / shirt-hem artifacts.
@@ -1219,8 +1237,8 @@ function calcMeas(pose, heightCm){
 
   return{
     heightCm,mmPx:+mmPx.toFixed(3),bodyPx:Math.round(bodyPx),
-    shoulderCm,hipCm,waistCm,torsoCm,inseamCm,armCm,
-    shoulderSil, hipSil, waistSil, waistScrY,
+    shoulderCm,chestCm,hipCm,waistCm,torsoCm,inseamCm,armCm,
+    shoulderSil,chestSil,chestScrY, hipSil, waistSil, waistScrY,
     shoulderJointCm: ls&&rs ? pxToCm(distS(ls,rs)) : null,
     hipJointCm:      lh&&rh ? pxToCm(distS(lh,rh)) : null,
     baggyClothing,
@@ -1374,7 +1392,13 @@ function drawMeasOverlay(meas,c=ctx,W=oc.width){
     }
   }
 
-  // ── 3. WAIST — label left ─────────────────────────────────────────────────
+  // ── 3. CHEST WIDTH — label left ──────────────────────────────────────────
+  if(meas.chestSil&&meas.chestScrY!=null){
+    hBracket(meas.chestSil.leftX, meas.chestSil.rightX, meas.chestScrY,
+      meas.chestCm+' cm','#5dd9c1','left');
+  }
+
+  // ── 4. WAIST — label left ─────────────────────────────────────────────────
   if(meas.waistSil&&meas.waistScrY!=null){
     if(meas.waistSil.isFallback){c.save();c.setLineDash([5,4]);}
     hBracket(meas.waistSil.leftX, meas.waistSil.rightX, meas.waistScrY,
@@ -1541,6 +1565,7 @@ function drawInfoBar(c,meas,W,H){
     `Height: ${meas.heightCm} cm  ·  Scale: ${meas.mmPx} mm/px`,
     [
       meas.shoulderCm?`Shoulders: ${meas.shoulderCm} cm`:'',
+      meas.chestCm?`Chest: ${meas.chestCm} cm`:'',
       meas.waistCm?`Waist: ${meas.waistCm} cm`:'',
       meas.hipCm?`Hips: ${meas.hipCm} cm`:'',
     ].filter(Boolean).join('  ·  '),
@@ -1619,6 +1644,7 @@ function showResults(meas,capCanvas){
   cardFull('Height (input)',meas.heightCm,'cm','Your input');
   card('Shoulders',meas.shoulderCm,'cm',true,
     meas.shoulderSil?`Silhouette · joint: ${meas.shoulderJointCm} cm`:confLabel);
+  card('Chest',meas.chestCm,'cm',true,'Silhouette scan');
   card('Waist',meas.waistCm,'cm',true,
     meas.waistSil?'Silhouette':confLabel);
   card('Hips',meas.hipCm,'cm',false,
@@ -1764,7 +1790,7 @@ async function processBatchPhoto(file, heightCm){
   if(!meas) return{error:'Could not compute measurements'};
 
   return {
-    shoulder:meas.shoulderCm, waist:meas.waistCm, hip:meas.hipCm,
+    shoulder:meas.shoulderCm, chest:meas.chestCm, waist:meas.waistCm, hip:meas.hipCm,
     torso:meas.torsoCm, inseam:meas.inseamCm, arm:meas.armCm,
     baggy:meas.baggyClothing, error:null
   };
@@ -1783,6 +1809,7 @@ function renderBatchResults(){
       <td style="padding:9px 8px;color:rgba(255,255,255,0.8);white-space:nowrap">${name}</td>
       <td style="padding:9px 8px;text-align:center;color:#7ec8e3;font-weight:700">${r.height}</td>
       <td style="padding:9px 8px;text-align:center;color:#eee">${fmt(r.shoulder)}</td>
+      <td style="padding:9px 8px;text-align:center;color:#5dd9c1">${fmt(r.chest)}</td>
       <td style="padding:9px 8px;text-align:center;color:#eee">${fmt(r.waist)}</td>
       <td style="padding:9px 8px;text-align:center;color:#eee">${fmt(r.hip)}</td>
       <td style="padding:9px 8px;text-align:center;color:#eee">${fmt(r.torso)}</td>
@@ -1796,10 +1823,10 @@ function renderBatchResults(){
 }
 
 function exportBatchCSV(){
-  const headers=['File','Height_cm','Shoulder_cm','Waist_cm','Hip_cm','Torso_cm','Inseam_cm','Arm_cm','Baggy','Error'];
+  const headers=['File','Height_cm','Shoulder_cm','Chest_cm','Waist_cm','Hip_cm','Torso_cm','Inseam_cm','Arm_cm','Baggy','Error'];
   const rows=batchResults.map(r=>[
     `"${r.file}"`, r.height,
-    r.shoulder??'', r.waist??'', r.hip??'', r.torso??'', r.inseam??'', r.arm??'',
+    r.shoulder??'', r.chest??'', r.waist??'', r.hip??'', r.torso??'', r.inseam??'', r.arm??'',
     r.baggy?'yes':'no', r.error?`"${r.error}"`:'',
   ].join(','));
   const csv=[headers.join(','),...rows].join('\n');
