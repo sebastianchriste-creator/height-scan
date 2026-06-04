@@ -1213,16 +1213,15 @@ function calcMeas(pose, heightCm){
     waistCm=+(waistCm*1.08).toFixed(1);
 
   // ── POSITIONAL SANITY: chest must be above waist ──────────────────────────
-  // Low-contrast clothing can cause the waist scan to find its narrowest row
-  // in the upper torso and the chest fallback to land lower — visually inverted.
-  // If positions are swapped, swap both the values and the bracket positions so
-  // the overlay stays anatomically honest. Values are still approximate for
-  // dark-clothing cases but at least they display in the correct order.
+  // If the chest fallback bracket would appear below the waist bracket, the
+  // fallback has landed at an unreliable position (e.g. spread-arm posture
+  // or dark clothing). Suppress the chest bracket — keep the value for CSV
+  // export but don't draw a misleading overlay.
+  // IMPORTANT: do NOT swap values. Swapping corrupts the waist reading which
+  // is usually more reliable than the fallback chest position.
   if(chestScrY!=null && waistScrY!=null && chestScrY > waistScrY){
-    let t;
-    t=chestCm;  chestCm=waistCm;  waistCm=t;
-    t=chestSil; chestSil=waistSil; waistSil=t;
-    t=chestScrY;chestScrY=waistScrY;waistScrY=t;
+    chestSil=null;
+    chestScrY=null;
   }
 
   // Torso: mid-shoulder to mid-hip
