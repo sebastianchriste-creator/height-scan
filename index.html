@@ -162,6 +162,27 @@
       display:flex;align-items:center;justify-content:center;
     }
 
+    /* ── FIT PREFERENCE ── */
+    .fit-option{
+      display:flex;align-items:center;gap:14px;
+      background:rgba(255,255,255,0.05);
+      border:1.5px solid rgba(255,255,255,0.1);
+      border-radius:16px;padding:14px 16px;
+      cursor:pointer;transition:all .18s;color:#eee;
+      -webkit-tap-highlight-color:transparent;
+    }
+    .fit-option:hover{border-color:rgba(126,200,227,0.35);background:rgba(126,200,227,0.05);}
+    .fit-option.selected{
+      background:rgba(126,200,227,0.12);
+      border-color:#7ec8e3;
+      color:#7ec8e3;
+    }
+    .fit-check{
+      font-size:16px;font-weight:700;color:#7ec8e3;
+      opacity:0;transition:opacity .15s;flex-shrink:0;
+    }
+    .fit-option.selected .fit-check{opacity:1;}
+
     /* make preview canvas tappable */
     .results-preview-wrap{cursor:pointer}
     .results-preview-wrap::after{
@@ -203,7 +224,7 @@
     <p class="height-tip">Used only as a reference scale — not stored.</p>
   </div>
 
-  <button class="btn-primary" id="btn-start" onclick="showInstructions()" disabled>
+  <button class="btn-primary" id="btn-start" onclick="showFitPreference()" disabled>
     Next →
   </button>
 
@@ -212,6 +233,83 @@
   </button>
 
   <input type="file" id="photo-input" accept="image/*" style="display:none" onchange="handlePhotoUpload(event)">
+</div>
+
+<!-- ── SCREEN 1.2: FIT PREFERENCE ── -->
+<div id="screen-fit" class="screen" style="background:linear-gradient(160deg,#0d0d0d 0%,#1a1a1a 100%);padding:0;justify-content:flex-start;overflow-y:auto">
+  <div style="width:100%;max-width:400px;margin:0 auto;padding:max(36px,env(safe-area-inset-top)) 24px max(28px,env(safe-area-inset-bottom));display:flex;flex-direction:column;align-items:center">
+
+    <div class="intro-logo" style="margin-bottom:32px">Fit Preference</div>
+    <h2 style="font-size:24px;font-weight:700;text-align:center;line-height:1.2;margin-bottom:8px">How do you like<br>your clothes to fit?</h2>
+    <p style="font-size:14px;color:rgba(255,255,255,0.4);text-align:center;margin-bottom:28px;max-width:270px;line-height:1.55">We use this to recommend the right size for each garment.</p>
+
+    <!-- Options -->
+    <div style="width:100%;display:flex;flex-direction:column;gap:10px;margin-bottom:28px">
+
+      <!-- Slim -->
+      <div class="fit-option" id="fo-slim" onclick="selectFit('slim')" role="button" tabindex="0">
+        <svg viewBox="0 0 44 60" width="36" height="48" style="flex-shrink:0">
+          <circle cx="22" cy="8" r="7" fill="none" stroke="currentColor" stroke-width="2"/>
+          <path d="M13,18 L31,18 L29,54 L15,54 Z" fill="rgba(126,200,227,0.12)" stroke="currentColor" stroke-width="2" stroke-linejoin="round"/>
+          <line x1="15" y1="34" x2="29" y2="36" stroke="currentColor" stroke-width="1.5" stroke-dasharray="3,2" opacity=".5"/>
+        </svg>
+        <div style="flex:1">
+          <div style="font-size:15px;font-weight:700;margin-bottom:2px">Slim</div>
+          <div style="font-size:12px;color:rgba(255,255,255,0.45);line-height:1.4">Close to the body — follows your silhouette</div>
+        </div>
+        <div class="fit-check">✓</div>
+      </div>
+
+      <!-- Regular -->
+      <div class="fit-option" id="fo-regular" onclick="selectFit('regular')" role="button" tabindex="0">
+        <svg viewBox="0 0 44 60" width="36" height="48" style="flex-shrink:0">
+          <circle cx="22" cy="8" r="7" fill="none" stroke="currentColor" stroke-width="2"/>
+          <path d="M11,18 L33,18 L31,54 L13,54 Z" fill="rgba(126,200,227,0.12)" stroke="currentColor" stroke-width="2" stroke-linejoin="round"/>
+          <line x1="13" y1="34" x2="31" y2="36" stroke="currentColor" stroke-width="1.5" stroke-dasharray="3,2" opacity=".5"/>
+        </svg>
+        <div style="flex:1">
+          <div style="font-size:15px;font-weight:700;margin-bottom:2px">Regular</div>
+          <div style="font-size:12px;color:rgba(255,255,255,0.45);line-height:1.4">Standard — comfortable without being loose</div>
+        </div>
+        <div class="fit-check">✓</div>
+      </div>
+
+      <!-- Relaxed -->
+      <div class="fit-option" id="fo-relaxed" onclick="selectFit('relaxed')" role="button" tabindex="0">
+        <svg viewBox="0 0 44 60" width="36" height="48" style="flex-shrink:0">
+          <circle cx="22" cy="8" r="7" fill="none" stroke="currentColor" stroke-width="2"/>
+          <path d="M8,18 L36,18 L34,54 L10,54 Z" fill="rgba(126,200,227,0.12)" stroke="currentColor" stroke-width="2" stroke-linejoin="round"/>
+          <line x1="10" y1="35" x2="34" y2="36" stroke="currentColor" stroke-width="1.5" stroke-dasharray="3,2" opacity=".5"/>
+        </svg>
+        <div style="flex:1">
+          <div style="font-size:15px;font-weight:700;margin-bottom:2px">Relaxed</div>
+          <div style="font-size:12px;color:rgba(255,255,255,0.45);line-height:1.4">Easy fit with extra room to move</div>
+        </div>
+        <div class="fit-check">✓</div>
+      </div>
+
+      <!-- Oversized -->
+      <div class="fit-option" id="fo-oversized" onclick="selectFit('oversized')" role="button" tabindex="0">
+        <svg viewBox="0 0 44 60" width="36" height="48" style="flex-shrink:0">
+          <circle cx="22" cy="8" r="7" fill="none" stroke="currentColor" stroke-width="2"/>
+          <path d="M4,18 L40,18 L38,54 L6,54 Z" fill="rgba(126,200,227,0.12)" stroke="currentColor" stroke-width="2" stroke-linejoin="round"/>
+          <line x1="6" y1="36" x2="38" y2="36" stroke="currentColor" stroke-width="1.5" stroke-dasharray="3,2" opacity=".5"/>
+        </svg>
+        <div style="flex:1">
+          <div style="font-size:15px;font-weight:700;margin-bottom:2px">Oversized</div>
+          <div style="font-size:12px;color:rgba(255,255,255,0.45);line-height:1.4">Intentionally large and loose</div>
+        </div>
+        <div class="fit-check">✓</div>
+      </div>
+
+    </div>
+
+    <button class="btn-primary" id="btn-fit-next" onclick="showInstructions()" style="width:100%" disabled>Next →</button>
+    <button onclick="selectFit('regular');showInstructions()" style="margin-top:14px;background:transparent;border:none;color:rgba(255,255,255,0.28);font-size:13px;font-weight:600;cursor:pointer;letter-spacing:.03em">
+      Skip — use Regular
+    </button>
+
+  </div>
 </div>
 
 <!-- ── SCREEN: BATCH TEST ── -->
@@ -475,7 +573,30 @@ async function runPose(){
 
 // ── STATE ─────────────────────────────────────────────────────────────────────
 let knownHeightCm=0;
+let fitPreference='regular'; // slim | regular | relaxed | oversized
 let currentUnit='cm';
+
+// ── FIT PREFERENCE ────────────────────────────────────────────────────────────
+const FIT_LABELS={slim:'Slim',regular:'Regular',relaxed:'Relaxed',oversized:'Oversized'};
+// Chest/shoulder multipliers for size recommendation — placeholder coefficients,
+// will be tuned when the size recommendation layer is built.
+const FIT_MULTIPLIERS={slim:0.95,regular:1.00,relaxed:1.06,oversized:1.14};
+
+function showFitPreference(){
+  show('screen-fit');
+  // Restore previous selection
+  document.querySelectorAll('.fit-option').forEach(el=>el.classList.remove('selected'));
+  const el=document.getElementById('fo-'+fitPreference);
+  if(el){el.classList.add('selected');document.getElementById('btn-fit-next').disabled=false;}
+}
+
+function selectFit(pref){
+  fitPreference=pref;
+  document.querySelectorAll('.fit-option').forEach(el=>el.classList.remove('selected'));
+  const el=document.getElementById('fo-'+pref);
+  if(el) el.classList.add('selected');
+  document.getElementById('btn-fit-next').disabled=false;
+}
 let rafId=null;
 let stableCount=0;
 let heightHist=[];
@@ -1723,7 +1844,7 @@ function showResults(meas,capCanvas){
 
   // Sub-heading
   document.getElementById('res-sub').textContent=
-    `${meas.heightCm} cm · ${Math.round(meas.mmPx*10)/10} mm/px`;
+    `${meas.heightCm} cm · ${FIT_LABELS[fitPreference]||'Regular'} fit`;
 
   // Build measurement cards
   const grid=document.getElementById('meas-grid');
