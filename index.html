@@ -713,6 +713,7 @@ async function handlePhotoUpload(evt){
   // Draw skeleton + overlay onto canvas
   try{
     if(pose&&cp) drawSkeleton(pose,cp,ctx);
+    if(meas) renderBodyModel(meas,ctx,oc.width,oc.height);
     if(meas) drawMeasOverlay(meas,ctx,oc.width);
   }catch(e){console.error('draw error:',e);}
 
@@ -1457,6 +1458,120 @@ function updateStabRing(ratio){
   document.getElementById('stab-icon').textContent=ratio>=1?'✓':'🧍';
 }
 
+// ── PARAMETRIC 3D BODY MODEL ──────────────────────────────────────────────────
+// Builds a measurement-driven body mesh using elliptical cross-sections at each
+// detected landmark height and renders it semi-transparently onto the canvas.
+// Uses Three.js orthographic projection to match 2D photo coordinates exactly.
+// Not true SMPL (requires 50MB weights + registration) but a proper parametric
+// body that changes shape with every person's measurements.
+function renderBodyModel(meas, ctx, W, H){
+  if(typeof THREE==='undefined') return;
+  const {crownSY,floorSY,noseSX,mmPx,kps,
+         shoulderCm,chestCm,waistCm,hipCm,
+         chestScrY,waistScrY,hipSil} = meas||{};
+  if(!crownSY||!floorSY||!noseSX||!kps) return;
+
+  try{
+    // Offscreen WebGL renderer
+    const renderer=new THREE.WebGLRenderer({antialias:true,alpha:true,preserveDrawingBuffer:true});
+    renderer.setSize(W,H);
+    renderer.setPixelRatio(1);
+    renderer.setClearColor(0,0);
+
+    // Orthographic camera: 1 unit = 1 screen pixel
+    const cam=new THREE.OrthographicCamera(-W/2,W/2,H/2,-H/2,1,3000);
+    cam.position.z=1500;
+
+    const scene=new THREE.Scene();
+    // Warm ambient + cool key light for skin-like depth on blue mesh
+    scene.add(new THREE.AmbientLight(0xffffff,0.5));
+    const kl=new THREE.DirectionalLight(0xffffff,0.9); kl.position.set(1,2,4); scene.add(kl);
+    const fl=new THREE.DirectionalLight(0x7ec8e3,0.25); fl.position.set(-1,0,-2); scene.add(fl);
+
+    // Coordinate helpers
+    const cx = noseSX-W/2;              // world-X of body centre
+    const wy = sy => H/2-sy;            // screen-Y → world-Y (Three.js Y-up)
+    const cp2 = cm => cm*10/mmPx;        // cm → px (already in screen-pixel units)
+
+    // Landmark Y positions from keypoints + fallbacks
+    const bH = floorSY-crownSY;
+    const shY  = kps[5]&&kps[6]  ? (kps[5].y+kps[6].y)/2  : crownSY+bH*0.18;
+    const ankY = kps[15]&&kps[16] ? (kps[15].y+kps[16].y)/2: floorSY-bH*0.02;
+    const hipY = hipSil?.y        || shY+bH*0.40;
+    const wstY = waistScrY        || shY+(hipY-shY)*0.60;
+    const chY  = chestScrY        || shY+(wstY-shY)*0.35;
+
+    // Cross-sections: [screenY, half-width-X (px), half-depth-Z (px)]
+    // Depth ratios from anthropometric literature (male torso approximation)
+    const S=shoulderCm, C=chestCm, WA=waistCm, HI=hipCm;
+    const sects=[
+      [crownSY,          cp2(S)*0.22, cp2(S)*0.22],  // crown
+      [crownSY+bH*0.046, cp2(S)*0.24, cp2(S)*0.24],  // head top
+      [crownSY+bH*0.092, cp2(S)*0.24, cp2(S)*0.23],  // head equator
+      [crownSY+bH*0.132, cp2(S)*0.21, cp2(S)*0.20],  // jaw
+      [crownSY+bH*0.155, cp2(S)*0.10, cp2(S)*0.10],  // neck
+      [shY-bH*0.005,     cp2(S)/2,    cp2(S)*0.18],   // shoulders
+      [chY,              cp2(C)/2,    cp2(C)*0.22],   // chest
+      [wstY,             cp2(WA)/2,   cp2(WA)*0.25],  // waist
+      [hipY,             cp2(HI)/2,   cp2(HI)*0.26],  // hips
+      [hipY+bH*0.065,    cp2(HI)*0.38,cp2(HI)*0.20],  // upper thigh
+      [hipY+bH*0.19,     cp2(HI)*0.30,cp2(HI)*0.17],  // mid thigh
+      [ankY-bH*0.085,    cp2(HI)*0.24,cp2(HI)*0.16],  // lower leg
+      [ankY,             cp2(HI)*0.20,cp2(HI)*0.12],  // ankle
+    ];
+
+    // Build skin mesh: one pair of elliptical rings per segment
+    const SEGS=32;
+    const pos=[], idx=[];
+    let vOff=0;
+
+    for(let r=0;r<sects.length-1;r++){
+      const [syA,rxA,rzA]=sects[r];
+      const [syB,rxB,rzB]=sects[r+1];
+      const wyA=wy(syA), wyB=wy(syB);
+      for(let i=0;i<SEGS;i++){
+        const a=(i/SEGS)*Math.PI*2;
+        pos.push(cx+rxA*Math.cos(a), wyA, rzA*Math.sin(a));
+      }
+      for(let i=0;i<SEGS;i++){
+        const a=(i/SEGS)*Math.PI*2;
+        pos.push(cx+rxB*Math.cos(a), wyB, rzB*Math.sin(a));
+      }
+      for(let i=0;i<SEGS;i++){
+        const a=vOff+i, b=vOff+(i+1)%SEGS, c=vOff+SEGS+i, d=vOff+SEGS+(i+1)%SEGS;
+        idx.push(a,c,b, b,c,d);
+      }
+      vOff+=SEGS*2;
+    }
+
+    const geo=new THREE.BufferGeometry();
+    geo.setAttribute('position',new THREE.Float32BufferAttribute(pos,3));
+    geo.setIndex(idx);
+    geo.computeVertexNormals();
+
+    const mat=new THREE.MeshPhongMaterial({
+      color:0x4aafd4, emissive:0x082535,
+      specular:0xaaddee, shininess:50,
+      opacity:0.40, transparent:true,
+      side:THREE.DoubleSide
+    });
+
+    scene.add(new THREE.Mesh(geo,mat));
+    renderer.render(scene,cam);
+
+    // Composite onto canvas (body model behind measurements)
+    ctx.save();
+    ctx.drawImage(renderer.domElement,0,0);
+    ctx.restore();
+
+    // Clean up GPU resources
+    renderer.dispose(); geo.dispose(); mat.dispose();
+
+  }catch(e){
+    console.warn('renderBodyModel:',e);
+  }
+}
+
 // ── SKELETON DRAWING ──────────────────────────────────────────────────────────
 const SKELETON_PAIRS=[
   [KP.NOSE,KP.L_EYE],[KP.NOSE,KP.R_EYE],
@@ -1741,7 +1856,9 @@ function doCapture(meas,cp){
   if(cp)c.drawImage(video,cp.sx,cp.sy,cp.sw,cp.sh,0,0,cap.width,cap.height);
   // 2. Skeleton
   if(latestPose)drawSkeleton(latestPose,cp,c);
-  // 3. Full measurement overlay (baked into the image)
+  // 3. Parametric body model (behind measurements)
+  renderBodyModel(meas,c,cap.width,cap.height);
+  // 4. Full measurement overlay on top
   drawMeasOverlay(meas,c,cap.width);
 
   // 4. Bottom info bar
@@ -2049,6 +2166,8 @@ function resetBatch(){
 loadDetector().catch(()=>{});
 </script>
 
+<!-- Three.js — parametric body model -->
+<script src="https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.min.js"></script>
 <!-- TensorFlow.js + MoveNet -->
 <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs-core@4.17.0/dist/tf-core.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs-converter@4.17.0/dist/tf-converter.min.js"></script>
