@@ -167,21 +167,23 @@
       display:flex;align-items:center;gap:14px;
       background:#06080b;
       border:1.5px solid rgba(255,255,255,0.08);
-      border-radius:16px;padding:12px 16px;
+      border-radius:16px;padding:10px 14px;
       cursor:pointer;transition:all .18s;color:#eee;
       -webkit-tap-highlight-color:transparent;
+      flex:1;min-height:0; /* stretch to fill available space */
     }
     .fit-option:hover{border-color:rgba(126,200,227,0.35);background:#0a1018;}
-    .fit-option.selected{
-      background:#07111c;
-      border-color:#7ec8e3;
-      color:#7ec8e3;
-    }
+    .fit-option.selected{background:#07111c;border-color:#7ec8e3;color:#7ec8e3;}
     .fit-check{
       font-size:16px;font-weight:700;color:#7ec8e3;
       opacity:0;transition:opacity .15s;flex-shrink:0;
     }
     .fit-option.selected .fit-check{opacity:1;}
+    /* Auto-scaling icon: clamp between 52px (small phone) and 96px (large screen) */
+    .fit-icon{
+      height:clamp(52px,11vmin,96px);
+      width:auto;object-fit:contain;flex-shrink:0;border-radius:10px;
+    }
 
     /* ── PREVIEW DOWNLOAD BUTTON ── */
     #btn-dl-preview{
@@ -246,19 +248,19 @@
 </div>
 
 <!-- ── SCREEN 1.2: FIT PREFERENCE ── -->
-<div id="screen-fit" class="screen" style="background:linear-gradient(160deg,#0d0d0d 0%,#1a1a1a 100%);padding:0;justify-content:flex-start;overflow-y:auto">
-  <div style="width:100%;max-width:400px;margin:0 auto;padding:max(36px,env(safe-area-inset-top)) 24px max(28px,env(safe-area-inset-bottom));display:flex;flex-direction:column;align-items:center">
+<div id="screen-fit" class="screen" style="background:linear-gradient(160deg,#0d0d0d 0%,#1a1a1a 100%);padding:0;justify-content:flex-start;overflow:hidden">
+  <div style="width:100%;max-width:400px;height:100%;margin:0 auto;padding:max(20px,env(safe-area-inset-top)) 20px max(16px,env(safe-area-inset-bottom));display:flex;flex-direction:column;align-items:center">
 
-    <div class="intro-logo" style="margin-bottom:32px">Fit Preference</div>
-    <h2 style="font-size:24px;font-weight:700;text-align:center;line-height:1.2;margin-bottom:8px">How do you like<br>your clothes to fit?</h2>
-    <p style="font-size:14px;color:rgba(255,255,255,0.4);text-align:center;margin-bottom:28px;max-width:270px;line-height:1.55">We use this to recommend the right size for each garment.</p>
+    <div class="intro-logo" style="margin-bottom:clamp(4px,1.5vh,16px)">Fit Preference</div>
+    <h2 style="font-size:clamp(20px,5vw,26px);font-weight:700;text-align:center;line-height:1.2;margin-bottom:6px">How do you like<br>your clothes to fit?</h2>
+    <p style="font-size:clamp(12px,3vw,14px);color:rgba(255,255,255,0.4);text-align:center;margin-bottom:clamp(8px,1.8vh,20px);max-width:270px;line-height:1.45">We use this to recommend the right size for each garment.</p>
 
-    <!-- Options -->
-    <div style="width:100%;display:flex;flex-direction:column;gap:10px;margin-bottom:28px">
+    <!-- Options — flex:1 fills all remaining vertical space so cards auto-scale -->
+    <div style="width:100%;display:flex;flex-direction:column;gap:clamp(6px,1.2vh,10px);flex:1;min-height:0;margin-bottom:clamp(10px,2vh,20px)">
 
       <!-- Slim -->
       <div class="fit-option" id="fo-slim" onclick="selectFit('slim')" role="button" tabindex="0">
-        <img src="Slim.jpg" alt="Slim fit" style="width:84px;height:96px;object-fit:contain;flex-shrink:0;border-radius:10px">
+        <img src="Slim.jpg" alt="Slim fit" style="class="fit-icon"">
         <div style="flex:1">
           <div style="font-size:15px;font-weight:700;margin-bottom:2px">Slim</div>
           <div style="font-size:12px;color:rgba(255,255,255,0.45);line-height:1.4">Close to the body — follows your silhouette</div>
@@ -268,7 +270,7 @@
 
       <!-- Regular -->
       <div class="fit-option" id="fo-regular" onclick="selectFit('regular')" role="button" tabindex="0">
-        <img src="Regular.jpg" alt="Regular fit" style="width:84px;height:96px;object-fit:contain;flex-shrink:0;border-radius:10px">
+        <img src="Regular.jpg" alt="Regular fit" style="class="fit-icon"">
         <div style="flex:1">
           <div style="font-size:15px;font-weight:700;margin-bottom:2px">Regular</div>
           <div style="font-size:12px;color:rgba(255,255,255,0.45);line-height:1.4">Standard — comfortable without being loose</div>
@@ -278,7 +280,7 @@
 
       <!-- Relaxed -->
       <div class="fit-option" id="fo-relaxed" onclick="selectFit('relaxed')" role="button" tabindex="0">
-        <img src="Relaxed.jpg" alt="Relaxed fit" style="width:84px;height:96px;object-fit:contain;flex-shrink:0;border-radius:10px">
+        <img src="Relaxed.jpg" alt="Relaxed fit" style="class="fit-icon"">
         <div style="flex:1">
           <div style="font-size:15px;font-weight:700;margin-bottom:2px">Relaxed</div>
           <div style="font-size:12px;color:rgba(255,255,255,0.45);line-height:1.4">Easy fit with extra room to move</div>
@@ -288,7 +290,7 @@
 
       <!-- Oversized -->
       <div class="fit-option" id="fo-oversized" onclick="selectFit('oversized')" role="button" tabindex="0">
-        <img src="Oversized.jpg" alt="Oversized fit" style="width:84px;height:96px;object-fit:contain;flex-shrink:0;border-radius:10px">
+        <img src="Oversized.jpg" alt="Oversized fit" style="class="fit-icon"">
         <div style="flex:1">
           <div style="font-size:15px;font-weight:700;margin-bottom:2px">Oversized</div>
           <div style="font-size:12px;color:rgba(255,255,255,0.45);line-height:1.4">Intentionally large and loose</div>
@@ -298,8 +300,8 @@
 
     </div>
 
-    <button class="btn-primary" id="btn-fit-next" onclick="showInstructions()" style="width:100%" disabled>Next →</button>
-    <button onclick="selectFit('regular');showInstructions()" style="margin-top:14px;background:transparent;border:none;color:rgba(255,255,255,0.28);font-size:13px;font-weight:600;cursor:pointer;letter-spacing:.03em">
+    <button class="btn-primary" id="btn-fit-next" onclick="showInstructions()" style="width:100%;padding:14px" disabled>Next →</button>
+    <button onclick="selectFit('regular');showInstructions()" style="margin-top:10px;background:transparent;border:none;color:rgba(255,255,255,0.28);font-size:12px;font-weight:600;cursor:pointer;letter-spacing:.03em">
       Skip — use Regular
     </button>
 
