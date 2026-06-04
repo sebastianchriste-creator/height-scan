@@ -1089,11 +1089,12 @@ function calcMeas(pose, heightCm){
       // Arm masking in scanTorsoSilhouette already excludes the arms from each row,
       // so the widest row here reliably finds the chest silhouette.
       // Floor: ≥ 65% of shoulder joint width (chest can't be narrower than ~⅔ of shoulders).
-      const chestZoneTop=shY+torsoH*0.15;
-      const chestZoneBot=shY+torsoH*0.40;
-      const chestMin=shoulderPx*0.65;
+      const chestZoneTop=shY+torsoH*0.12; // was 0.15 — slightly higher to catch more rows
+      const chestZoneBot=shY+torsoH*0.42; // was 0.40 — slightly lower for the same reason
+      const chestMin=shoulderPx*0.55;     // was 0.65 — looser floor; arm masking on lean builds
+                                           // can narrow rows below the old threshold
       const chestRows=rows.filter(r=>r.y>chestZoneTop&&r.y<chestZoneBot&&r.widthPx>=chestMin);
-      if(chestRows.length>=2){
+      if(chestRows.length>=1){            // was >=2 — one good row is enough for widest-pick
         const best=chestRows.reduce((a,b)=>b.widthPx>a.widthPx?b:a);
         chestCm=pxToCm(best.widthPx);
         chestSil={leftX:best.leftX,rightX:best.rightX,widthPx:best.widthPx};
