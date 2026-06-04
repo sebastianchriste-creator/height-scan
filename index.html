@@ -197,6 +197,39 @@
     }
     #btn-dl-preview:hover{background:rgba(126,200,227,0.35);}
 
+    /* ── IMAGE VIEWER ACTIONS ── */
+    #viewer-actions{
+      position:absolute;bottom:0;left:0;right:0;
+      padding:16px 20px max(24px,env(safe-area-inset-bottom));
+      background:linear-gradient(to top,rgba(0,0,0,0.92) 0%,transparent 100%);
+      display:flex;flex-direction:column;gap:10px;
+    }
+    #viewer-profile-row{display:flex;gap:8px}
+    #viewer-email{
+      flex:1;background:rgba(255,255,255,0.1);border:1px solid rgba(255,255,255,0.2);
+      border-radius:12px;color:#fff;font-size:14px;padding:12px 14px;outline:none;
+    }
+    #viewer-email::placeholder{color:rgba(255,255,255,0.35)}
+    #viewer-email:focus{border-color:#7ec8e3}
+    #btn-save-profile{
+      padding:12px 16px;border-radius:12px;border:none;white-space:nowrap;
+      background:linear-gradient(135deg,#7ec8e3,#5ba8c4);
+      color:#0d0d0d;font-size:14px;font-weight:700;cursor:pointer;
+    }
+    #btn-viewer-share{
+      width:100%;padding:13px;border-radius:12px;
+      background:rgba(255,255,255,0.1);border:1px solid rgba(255,255,255,0.2);
+      color:#fff;font-size:14px;font-weight:600;cursor:pointer;
+    }
+    /* Profile save confirmation */
+    #profile-saved-toast{
+      position:fixed;bottom:120px;left:50%;transform:translateX(-50%);
+      background:rgba(76,175,80,0.95);color:#fff;padding:10px 20px;
+      border-radius:20px;font-size:13px;font-weight:600;
+      opacity:0;transition:opacity .3s;pointer-events:none;white-space:nowrap;z-index:200;
+    }
+    #profile-saved-toast.show{opacity:1}
+
     /* make preview canvas tappable */
     .results-preview-wrap{cursor:pointer}
     .results-preview-wrap::after{
@@ -473,10 +506,24 @@
   <button id="btn-last" onclick="showLastCapture()">📷 Last</button>
 </div>
 
+<div id="profile-saved-toast"></div>
+
 <!-- ── FULLSCREEN IMAGE VIEWER ── -->
 <div id="img-viewer">
   <button id="img-viewer-close" onclick="closeViewer()">✕</button>
   <img id="img-viewer-img" src="" alt="capture">
+
+  <!-- Bottom action bar -->
+  <div id="viewer-actions">
+    <!-- Profile save row -->
+    <div id="viewer-profile-row">
+      <input type="email" id="viewer-email" placeholder="your@email.com"
+             autocomplete="email" inputmode="email">
+      <button id="btn-save-profile" onclick="saveToProfile()">Save to Profile</button>
+    </div>
+    <!-- Share row -->
+    <button id="btn-viewer-share" onclick="shareResults()">Save / Share image</button>
+  </div>
 </div>
 
 <!-- ── SCREEN 3: RESULTS ── -->
@@ -501,7 +548,7 @@
 
   <div class="results-actions">
     <button class="btn-secondary" onclick="rescan()">Rescan</button>
-    <button class="btn-share" onclick="shareResults()">Save / Share</button>
+    <button class="btn-secondary" onclick="openViewer()">Show Scan</button>
   </div>
 </div>
 
@@ -773,10 +820,52 @@ function showLastCapture(){
 function openViewer(){
   if(!lastCapturedDataURL)return;
   document.getElementById('img-viewer-img').src=lastCapturedDataURL;
+  // Pre-fill saved email if available
+  const saved=localStorage.getItem('bodyscan_email');
+  if(saved) document.getElementById('viewer-email').value=saved;
   document.getElementById('img-viewer').classList.add('show');
 }
 function closeViewer(){
   document.getElementById('img-viewer').classList.remove('show');
+}
+
+// ── SAVE TO PROFILE ───────────────────────────────────────────────────────────
+function saveToProfile(){
+  const email=document.getElementById('viewer-email').value.trim();
+  if(!email||!email.includes('@')){
+    document.getElementById('viewer-email').focus();
+    document.getElementById('viewer-email').style.borderColor='#ff6b6b';
+    setTimeout(()=>document.getElementById('viewer-email').style.borderColor='',1500);
+    return;
+  }
+  // Save email + latest measurements to localStorage
+  const profile={
+    email,
+    savedAt: new Date().toISOString(),
+    heightCm: lastMeas?.heightCm,
+    fitPreference,
+    measurements:{
+      shoulder: lastMeas?.shoulderCm,
+      chest:    lastMeas?.chestCm,
+      waist:    lastMeas?.waistCm,
+      hip:      lastMeas?.hipCm,
+      torso:    lastMeas?.torsoCm,
+      inseam:   lastMeas?.inseamCm,
+      arm:      lastMeas?.armCm,
+    }
+  };
+  localStorage.setItem('bodyscan_email', email);
+  // Keep up to 10 past scans
+  const history=JSON.parse(localStorage.getItem('bodyscan_history')||'[]');
+  history.unshift(profile);
+  if(history.length>10) history.length=10;
+  localStorage.setItem('bodyscan_history', JSON.stringify(history));
+
+  // Toast confirmation
+  const toast=document.getElementById('profile-saved-toast');
+  toast.textContent='✓ Saved to profile';
+  toast.classList.add('show');
+  setTimeout(()=>toast.classList.remove('show'), 2500);
 }
 function updateLastBtn(){
   const scanActive=document.getElementById('screen-scan').classList.contains('active');
