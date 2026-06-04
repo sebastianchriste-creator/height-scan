@@ -1224,6 +1224,13 @@ function calcMeas(pose, heightCm){
     chestScrY=null;
   }
 
+  // ── CHEST VALUE BOUNDS: waist ≤ chest ≤ shoulder ─────────────────────────
+  // Shoulder cap already enforced above. Apply waist floor here — chest can
+  // never read narrower than the waist. If it does, the scan found an armhole
+  // gap or similar artefact; clamp to waist as the best available estimate.
+  if(chestCm && waistCm && chestCm < waistCm)
+    chestCm=+(waistCm).toFixed(1);
+
   // Torso: mid-shoulder to mid-hip
   // Hard cap: torso / height tops out at ~32% anatomically (P1–P15 dataset).
   // App readings above 32.5% of height are caused by MoveNet placing hip joints
