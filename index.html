@@ -1113,6 +1113,17 @@ function calcMeas(pose, heightCm){
           chestScrY=chestY;
         }
       }
+      // Anatomical cap: chest cannot exceed shoulder width.
+      // Loose/billowing shirts cause the fallback scan to pick up the shirt
+      // silhouette beyond the shoulder tips. Cap prevents this.
+      if(chestCm && shoulderCm && chestCm > shoulderCm){
+        const halfDiff=(chestCm-shoulderCm)/2;
+        chestCm=shoulderCm;
+        if(chestSil) chestSil={...chestSil,
+          leftX:chestSil.leftX+halfDiff/mmPx*10,
+          rightX:chestSil.rightX-halfDiff/mmPx*10,
+          widthPx:chestSil.widthPx-halfDiff/mmPx*10*2};
+      }
 
       // Waist: narrowest row in the upper 60% of torso.
       // Arm masking means these rows already exclude the arms, so plain min is fine.
