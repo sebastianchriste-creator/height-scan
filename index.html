@@ -1213,16 +1213,10 @@ function calcMeas(pose, heightCm){
     waistCm=+(waistCm*1.08).toFixed(1);
 
   // ── POSITIONAL SANITY: chest must be above waist ──────────────────────────
-  // If the chest fallback bracket would appear below the waist bracket, the
-  // fallback has landed at an unreliable position (e.g. spread-arm posture
-  // or dark clothing). Suppress the chest bracket — keep the value for CSV
-  // export but don't draw a misleading overlay.
-  // IMPORTANT: do NOT swap values. Swapping corrupts the waist reading which
-  // is usually more reliable than the fallback chest position.
-  if(chestScrY!=null && waistScrY!=null && chestScrY > waistScrY){
-    chestSil=null;
-    chestScrY=null;
-  }
+  // If chest bracket is below waist bracket, flag as conflict — show it but
+  // warn the user rather than suppressing (suppressing hides useful debug info).
+  const chestPositionConflict = chestScrY!=null && waistScrY!=null && chestScrY > waistScrY;
+  if(chestPositionConflict && chestSil) chestSil.isConflict=true;
 
   // ── CHEST VALUE BOUNDS: waist ≤ chest ≤ shoulder ─────────────────────────
   // Shoulder cap already enforced above.
@@ -1232,8 +1226,11 @@ function calcMeas(pose, heightCm){
   // Coefficient 0.35 = population mean (adult male, CAESAR/SizeUSA data).
   // Physiological range: ~0.25 (lean) to ~0.55 (athletic/muscular).
   // Placeholder until GT chest measurements are collected for calibration.
-  if(chestCm && waistCm && shoulderCm && chestCm < waistCm)
+  let chestInterpolated=false;
+  if(chestCm && waistCm && shoulderCm && chestCm < waistCm){
     chestCm=+(waistCm+(shoulderCm-waistCm)*0.35).toFixed(1);
+    chestInterpolated=true;
+  }
 
   // Torso: mid-shoulder to mid-hip
   // Hard cap: torso / height tops out at ~32% anatomically (P1–P15 dataset).
@@ -1289,7 +1286,12 @@ function calcMeas(pose, heightCm){
     shoulderSil,chestSil,chestScrY, hipSil, waistSil, waistScrY,
     shoulderJointCm: ls&&rs ? pxToCm(distS(ls,rs)) : null,
     hipJointCm:      lh&&rh ? pxToCm(distS(lh,rh)) : null,
-    baggyClothing,
+    baggyClothing, chestPositionConflict, chestInterpolated,
+    warnings:[
+      ...(chestPositionConflict?['Chest position unreliable — try natural arm position']:[] ),
+      ...(chestInterpolated?['Chest estimated from shoulder/waist ratio']:[] ),
+      ...(baggyClothing?['Bulky clothing — measurements may reflect clothing, not body']:[] ),
+    ],
     confidence:+avgKpScore.toFixed(2),
     crownSY:crownS.y,floorSY:floorS.y,noseSX:crownS.x,
     kps:kps.map(k=>k?v2s(k.x,k.y,cp):null),
@@ -1442,10 +1444,30 @@ function drawMeasOverlay(meas,c=ctx,W=oc.width){
 
   // ── 3. CHEST WIDTH — label left ──────────────────────────────────────────
   if(meas.chestSil&&meas.chestScrY!=null){
-    if(meas.chestSil.isFallback){c.save();c.setLineDash([5,4]);}
-    hBracket(meas.chestSil.leftX, meas.chestSil.rightX, meas.chestScrY,
-      meas.chestCm+' cm ~','#5dd9c1','left');
-    if(meas.chestSil.isFallback){c.setLineDash([]);c.restore();}
+    const chestConflict=meas.chestSil.isConflict||meas.chestSil.isFallback;
+    const chestColor=meas.chestSil.isConflict?'#EDB432':'#5dd9c1'; // amber if conflict
+    const chestLabel=meas.chestCm+(chestConflict?' cm ~':' cm');
+    c.save();
+    if(chestConflict)c.setLineDash([5,4]);
+    hBracket(meas.chestSil.leftX,meas.chestSil.rightX,meas.chestScrY,chestLabel,chestColor,'left');
+    c.setLineDash([]);c.restore();
+  }
+
+  // ── DETECTION WARNINGS ───────────────────────────────────────────────────
+  if(meas.warnings&&meas.warnings.length){
+    c.save();
+    c.font='bold 11px -apple-system,monospace';
+    meas.warnings.forEach((msg,i)=>{
+      const tw=c.measureText('⚠ '+msg).width;
+      const pw=tw+16,ph=20,rx=6;
+      const wx=Math.max(8,Math.min(W-pw-8, W/2-pw/2));
+      const wy=8+(i*(ph+4));
+      c.fillStyle='rgba(237,180,50,0.88)';
+      c.beginPath();c.roundRect(wx,wy,pw,ph,rx);c.fill();
+      c.fillStyle='#1a1a1a';c.textAlign='left';c.textBaseline='middle';
+      c.fillText('⚠ '+msg,wx+8,wy+ph/2);
+    });
+    c.restore();
   }
 
   // ── 4. WAIST — label left ─────────────────────────────────────────────────
