@@ -1089,16 +1089,29 @@ function calcMeas(pose, heightCm){
       // Arm masking in scanTorsoSilhouette already excludes the arms from each row,
       // so the widest row here reliably finds the chest silhouette.
       // Floor: ≥ 65% of shoulder joint width (chest can't be narrower than ~⅔ of shoulders).
-      const chestZoneTop=shY+torsoH*0.12; // was 0.15 — slightly higher to catch more rows
-      const chestZoneBot=shY+torsoH*0.42; // was 0.40 — slightly lower for the same reason
-      const chestMin=shoulderPx*0.55;     // was 0.65 — looser floor; arm masking on lean builds
-                                           // can narrow rows below the old threshold
+      // Primary: arm-masked rows in the chest zone.
+      // Works for fitted clothing or arms slightly away from body.
+      const chestZoneTop=shY+torsoH*0.12;
+      const chestZoneBot=shY+torsoH*0.42;
+      const chestMin=shoulderPx*0.55;
       const chestRows=rows.filter(r=>r.y>chestZoneTop&&r.y<chestZoneBot&&r.widthPx>=chestMin);
-      if(chestRows.length>=1){            // was >=2 — one good row is enough for widest-pick
+      if(chestRows.length>=1){
         const best=chestRows.reduce((a,b)=>b.widthPx>a.widthPx?b:a);
         chestCm=pxToCm(best.widthPx);
         chestSil={leftX:best.leftX,rightX:best.rightX,widthPx:best.widthPx};
         chestScrY=best.y;
+      }
+      // Fallback: arm masking too aggressive for loose clothing / arms-at-sides.
+      // detectSilhouetteWidth scans inward from the outer body edge (no arm masking).
+      // Consistent across builds — any arm-overlap bias is calibratable.
+      if(!chestCm){
+        const chestY=shY+torsoH*0.25;
+        const fb=detectSilhouetteWidth(chestY,cp, midX-distS(ls,rs), midX+distS(ls,rs));
+        if(fb&&fb.widthPx>distS(ls,rs)*0.55){
+          chestCm=pxToCm(fb.widthPx);
+          chestSil={leftX:fb.leftX,rightX:fb.rightX,widthPx:fb.widthPx,isFallback:true};
+          chestScrY=chestY;
+        }
       }
 
       // Waist: narrowest row in the upper 60% of torso.
@@ -1395,8 +1408,10 @@ function drawMeasOverlay(meas,c=ctx,W=oc.width){
 
   // ── 3. CHEST WIDTH — label left ──────────────────────────────────────────
   if(meas.chestSil&&meas.chestScrY!=null){
+    if(meas.chestSil.isFallback){c.save();c.setLineDash([5,4]);}
     hBracket(meas.chestSil.leftX, meas.chestSil.rightX, meas.chestScrY,
-      meas.chestCm+' cm','#5dd9c1','left');
+      meas.chestCm+' cm ~','#5dd9c1','left');
+    if(meas.chestSil.isFallback){c.setLineDash([]);c.restore();}
   }
 
   // ── 4. WAIST — label left ─────────────────────────────────────────────────
