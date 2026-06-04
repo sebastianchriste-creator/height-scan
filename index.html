@@ -185,11 +185,7 @@
       opacity:0;transition:opacity .15s;flex-shrink:0;
     }
     .fit-option.selected .fit-check{opacity:1;}
-    /* Icon scales with screen height — fits 4 cards on any phone */
-    .fit-icon{
-      height:clamp(60px,13vh,88px);
-      width:auto;object-fit:contain;flex-shrink:0;border-radius:10px;
-    }
+    .fit-icon{width:64px;height:72px;object-fit:contain;flex-shrink:0;border-radius:8px;}
 
     /* ── PREVIEW DOWNLOAD BUTTON ── */
     #btn-dl-preview{
@@ -266,7 +262,7 @@
 
       <!-- Slim -->
       <div class="fit-option" id="fo-slim" onclick="selectFit('slim')" role="button" tabindex="0">
-        <img src="Slim.jpg" alt="Slim fit" style="class="fit-icon"">
+        <img src="Slim.jpg" alt="Slim fit" class="fit-icon">
         <div style="flex:1">
           <div style="font-size:15px;font-weight:700;margin-bottom:2px">Slim</div>
           <div style="font-size:12px;color:rgba(255,255,255,0.45);line-height:1.4">Close to the body — follows your silhouette</div>
@@ -276,7 +272,7 @@
 
       <!-- Regular -->
       <div class="fit-option" id="fo-regular" onclick="selectFit('regular')" role="button" tabindex="0">
-        <img src="Regular.jpg" alt="Regular fit" style="class="fit-icon"">
+        <img src="Regular.jpg" alt="Regular fit" class="fit-icon">
         <div style="flex:1">
           <div style="font-size:15px;font-weight:700;margin-bottom:2px">Regular</div>
           <div style="font-size:12px;color:rgba(255,255,255,0.45);line-height:1.4">Standard — comfortable without being loose</div>
@@ -286,7 +282,7 @@
 
       <!-- Relaxed -->
       <div class="fit-option" id="fo-relaxed" onclick="selectFit('relaxed')" role="button" tabindex="0">
-        <img src="Relaxed.jpg" alt="Relaxed fit" style="class="fit-icon"">
+        <img src="Relaxed.jpg" alt="Relaxed fit" class="fit-icon">
         <div style="flex:1">
           <div style="font-size:15px;font-weight:700;margin-bottom:2px">Relaxed</div>
           <div style="font-size:12px;color:rgba(255,255,255,0.45);line-height:1.4">Easy fit with extra room to move</div>
@@ -296,7 +292,7 @@
 
       <!-- Oversized -->
       <div class="fit-option" id="fo-oversized" onclick="selectFit('oversized')" role="button" tabindex="0">
-        <img src="Oversized.jpg" alt="Oversized fit" style="class="fit-icon"">
+        <img src="Oversized.jpg" alt="Oversized fit" class="fit-icon">
         <div style="flex:1">
           <div style="font-size:15px;font-weight:700;margin-bottom:2px">Oversized</div>
           <div style="font-size:12px;color:rgba(255,255,255,0.45);line-height:1.4">Intentionally large and loose</div>
