@@ -1128,9 +1128,14 @@ function calcMeas(pose, heightCm){
       // Waist: narrowest row in the upper 60% of torso.
       // Arm masking means these rows already exclude the arms, so plain min is fine.
       // Floor: ≥ 55% of shoulder width to reject belt-gap / shirt-hem artifacts.
-      const waistZoneBot=shY+torsoH*0.60;
+      const waistZoneBot=shY+torsoH*0.65;
       const waistMin=shoulderPx*0.55;
-      const waistRows=rows.filter(r=>r.y>shY+10&&r.y<waistZoneBot&&r.widthPx>=waistMin);
+      // Lower bound raised from shY+10px → shY+20% of torso.
+      // The first ~15-20% of torso is the armhole area — narrow rows there
+      // (from arm masking / tight armhole) were being picked as "minimum waist",
+      // placing the waist bracket at shoulder level. The actual waist is always
+      // at least 20% of torso below the shoulder line.
+      const waistRows=rows.filter(r=>r.y>shY+torsoH*0.20&&r.y<waistZoneBot&&r.widthPx>=waistMin);
       if(waistRows.length>=2){
         const best=waistRows.reduce((a,b)=>b.widthPx<a.widthPx?b:a);
         waistCm=pxToCm(best.widthPx);
@@ -1217,6 +1222,17 @@ function calcMeas(pose, heightCm){
   // warn the user rather than suppressing (suppressing hides useful debug info).
   const chestPositionConflict = chestScrY!=null && waistScrY!=null && chestScrY > waistScrY;
   if(chestPositionConflict && chestSil) chestSil.isConflict=true;
+  // Override chest display to anatomical chest level (22% below shoulder).
+  // The scan landed too low — move bracket to correct position so the overlay
+  // is always anatomically ordered (chest above waist). The warning explains
+  // the value is estimated.
+  if(chestPositionConflict && ls && rs && lh && rh){
+    const shYs=(ls.y+rs.y)/2, hipYs=(lh.y+rh.y)/2;
+    chestScrY=shYs+(hipYs-shYs)*0.22;
+    const midXs=(ls.x+rs.x)/2, halfWpx=chestCm*5/mmPx;
+    if(chestSil) chestSil={...chestSil,
+      leftX:midXs-halfWpx, rightX:midXs+halfWpx, widthPx:halfWpx*2};
+  }
 
   // ── CHEST VALUE BOUNDS: waist ≤ chest ≤ shoulder ─────────────────────────
   // Shoulder cap already enforced above.
