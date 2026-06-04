@@ -170,7 +170,6 @@
       border-radius:16px;padding:10px 14px;
       cursor:pointer;transition:all .18s;color:#eee;
       -webkit-tap-highlight-color:transparent;
-      flex:1;min-height:0; /* stretch to fill available space */
     }
     .fit-option:hover{border-color:rgba(126,200,227,0.35);background:#0a1018;}
     .fit-option.selected{background:#07111c;border-color:#7ec8e3;color:#7ec8e3;}
@@ -179,9 +178,9 @@
       opacity:0;transition:opacity .15s;flex-shrink:0;
     }
     .fit-option.selected .fit-check{opacity:1;}
-    /* Auto-scaling icon: clamp between 52px (small phone) and 96px (large screen) */
+    /* Icon scales with screen height — fits 4 cards on any phone */
     .fit-icon{
-      height:clamp(52px,11vmin,96px);
+      height:clamp(60px,13vh,88px);
       width:auto;object-fit:contain;flex-shrink:0;border-radius:10px;
     }
 
@@ -248,15 +247,15 @@
 </div>
 
 <!-- ── SCREEN 1.2: FIT PREFERENCE ── -->
-<div id="screen-fit" class="screen" style="background:linear-gradient(160deg,#0d0d0d 0%,#1a1a1a 100%);padding:0;justify-content:flex-start;overflow:hidden">
-  <div style="width:100%;max-width:400px;height:100%;margin:0 auto;padding:max(20px,env(safe-area-inset-top)) 20px max(16px,env(safe-area-inset-bottom));display:flex;flex-direction:column;align-items:center">
+<div id="screen-fit" class="screen" style="background:linear-gradient(160deg,#0d0d0d 0%,#1a1a1a 100%);padding:0;justify-content:flex-start;overflow-y:auto">
+  <div style="width:100%;max-width:400px;margin:0 auto;padding:max(24px,env(safe-area-inset-top)) 20px max(20px,env(safe-area-inset-bottom));display:flex;flex-direction:column;align-items:center">
 
-    <div class="intro-logo" style="margin-bottom:clamp(4px,1.5vh,16px)">Fit Preference</div>
-    <h2 style="font-size:clamp(20px,5vw,26px);font-weight:700;text-align:center;line-height:1.2;margin-bottom:6px">How do you like<br>your clothes to fit?</h2>
-    <p style="font-size:clamp(12px,3vw,14px);color:rgba(255,255,255,0.4);text-align:center;margin-bottom:clamp(8px,1.8vh,20px);max-width:270px;line-height:1.45">We use this to recommend the right size for each garment.</p>
+    <div class="intro-logo" style="margin-bottom:10px">Fit Preference</div>
+    <h2 style="font-size:clamp(19px,5vw,24px);font-weight:700;text-align:center;line-height:1.2;margin-bottom:6px">How do you like<br>your clothes to fit?</h2>
+    <p style="font-size:13px;color:rgba(255,255,255,0.4);text-align:center;margin-bottom:16px;max-width:270px;line-height:1.45">We use this to recommend the right size for each garment.</p>
 
-    <!-- Options — flex:1 fills all remaining vertical space so cards auto-scale -->
-    <div style="width:100%;display:flex;flex-direction:column;gap:clamp(6px,1.2vh,10px);flex:1;min-height:0;margin-bottom:clamp(10px,2vh,20px)">
+    <!-- Options -->
+    <div style="width:100%;display:flex;flex-direction:column;gap:8px;margin-bottom:18px">
 
       <!-- Slim -->
       <div class="fit-option" id="fo-slim" onclick="selectFit('slim')" role="button" tabindex="0">
