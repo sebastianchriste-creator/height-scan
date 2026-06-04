@@ -1445,7 +1445,10 @@ function drawMeasOverlay(meas,c=ctx,W=oc.width){
 
   // ── 2. SHOULDER WIDTH — label right ──────────────────────────────────────
   if(ls&&rs){
-    const shY=Math.min(ls.y,rs.y)-10;
+    // Draw at the average joint Y (scan level) not above it.
+    // Drawing above the joints placed the bracket near the collar where the
+    // shirt narrows — making the line look shorter than the measurement value.
+    const shY=(ls.y+rs.y)/2;
     if(meas.shoulderSil){
       hBracket(meas.shoulderSil.leftX, meas.shoulderSil.rightX, shY,
         meas.shoulderCm+' cm','#7ec8e3','right');
