@@ -115,14 +115,21 @@
     .results-preview-wrap{position:relative;width:100%;height:260px;overflow:hidden}
     .results-preview-wrap canvas{width:100%;height:100%}
 
-    .meas-grid{padding:20px;display:grid;grid-template-columns:1fr 1fr;gap:12px}
-    .meas-card{background:rgba(255,255,255,0.05);border:1px solid rgba(255,255,255,0.08);border-radius:14px;padding:16px}
-    .meas-card.highlight{background:rgba(126,200,227,0.1);border-color:rgba(126,200,227,0.3)}
-    .meas-card.full{grid-column:span 2}
-    .meas-lbl{font-size:11px;font-weight:600;letter-spacing:.08em;text-transform:uppercase;color:rgba(255,255,255,0.4);margin-bottom:6px}
-    .meas-val{font-size:26px;font-weight:700;color:#fff}
-    .meas-val span{font-size:14px;font-weight:400;color:rgba(255,255,255,0.5);margin-left:2px}
-    .meas-confidence{font-size:10px;color:rgba(255,255,255,0.3);margin-top:4px}
+    /* ── MEASUREMENT ROWS ── */
+    .meas-grid{padding:0 20px 8px}
+    .meas-section-hdr{
+      font-size:11px;font-weight:700;letter-spacing:.12em;text-transform:uppercase;
+      color:rgba(255,255,255,0.28);padding:18px 0 8px;
+    }
+    .meas-row{
+      display:flex;align-items:center;gap:14px;
+      padding:13px 0;border-bottom:1px solid rgba(255,255,255,0.06);
+    }
+    .meas-row:last-child{border-bottom:none}
+    .meas-dot{width:9px;height:9px;border-radius:50%;flex-shrink:0}
+    .meas-row-label{flex:1;font-size:14px;color:rgba(255,255,255,0.65);font-weight:500}
+    .meas-row-val{font-size:24px;font-weight:700;color:#fff;letter-spacing:-.02em}
+    .meas-row-val span{font-size:13px;font-weight:400;color:rgba(255,255,255,0.4);margin-left:2px}
 
     .results-actions{padding:16px 20px max(24px,env(safe-area-inset-bottom));display:flex;gap:10px}
     .btn-secondary{
@@ -1955,17 +1962,35 @@ function showResults(meas,capCanvas){
   }
 
   document.getElementById('baggy-results-warn').style.display=meas.baggyClothing?'block':'none';
-  cardFull('Height (input)',meas.heightCm,'cm','Your input');
-  card('Shoulders',meas.shoulderCm,'cm',true,
-    meas.shoulderSil?`Silhouette · joint: ${meas.shoulderJointCm} cm`:confLabel);
-  card('Chest',meas.chestCm,'cm',true,'Silhouette scan');
-  card('Waist',meas.waistCm,'cm',true,
-    meas.waistSil?'Silhouette':confLabel);
-  card('Hips',meas.hipCm,'cm',false,
-    meas.hipSil?`Silhouette · joint: ${meas.hipJointCm} cm`:confLabel);
-  card('Torso',meas.torsoCm,'cm',false,confLabel);
-  card('Inseam',meas.inseamCm,'cm',false,confLabel);
-  card('Arm length',meas.armCm,'cm',false,confLabel);
+
+  function section(title){
+    const h=document.createElement('div');
+    h.className='meas-section-hdr';
+    h.textContent=title;
+    grid.appendChild(h);
+  }
+  function row(label,val,unit,color){
+    if(val==null)return;
+    const d=document.createElement('div');
+    d.className='meas-row';
+    d.innerHTML=`
+      <div class="meas-dot" style="background:${color}"></div>
+      <div class="meas-row-label">${label}</div>
+      <div class="meas-row-val">${val}<span>${unit}</span></div>
+    `;
+    grid.appendChild(d);
+  }
+
+  section('Body Width');
+  row('Shoulders', meas.shoulderCm, ' cm', '#7ec8e3');
+  row('Chest',     meas.chestCm,    ' cm', '#5dd9c1');
+  row('Waist',     meas.waistCm,    ' cm', '#c8a4e8');
+  row('Hips',      meas.hipCm,      ' cm', '#ff9632');
+
+  section('Length');
+  row('Torso',      meas.torsoCm,   ' cm', '#4CAF50');
+  row('Inseam',     meas.inseamCm,  ' cm', '#E8604C');
+  row('Arm length', meas.armCm,     ' cm', '#c8a4e8');
 
   show('screen-results');
 }
