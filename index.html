@@ -1225,11 +1225,15 @@ function calcMeas(pose, heightCm){
   }
 
   // ── CHEST VALUE BOUNDS: waist ≤ chest ≤ shoulder ─────────────────────────
-  // Shoulder cap already enforced above. Apply waist floor here — chest can
-  // never read narrower than the waist. If it does, the scan found an armhole
-  // gap or similar artefact; clamp to waist as the best available estimate.
-  if(chestCm && waistCm && chestCm < waistCm)
-    chestCm=+(waistCm).toFixed(1);
+  // Shoulder cap already enforced above.
+  // If chest < waist (scan found an armhole gap / spread-arm artefact), use
+  // anthropometric interpolation instead of just clamping to waist:
+  //   chest ≈ waist + (shoulder − waist) × 0.35
+  // Coefficient 0.35 = population mean (adult male, CAESAR/SizeUSA data).
+  // Physiological range: ~0.25 (lean) to ~0.55 (athletic/muscular).
+  // Placeholder until GT chest measurements are collected for calibration.
+  if(chestCm && waistCm && shoulderCm && chestCm < waistCm)
+    chestCm=+(waistCm+(shoulderCm-waistCm)*0.35).toFixed(1);
 
   // Torso: mid-shoulder to mid-hip
   // Hard cap: torso / height tops out at ~32% anatomically (P1–P15 dataset).
