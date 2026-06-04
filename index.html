@@ -388,50 +388,14 @@
 <div id="screen-instructions" class="screen">
   <div style="width:100%;max-width:400px;padding:28px 24px;display:flex;flex-direction:column;align-items:center;gap:0;overflow-y:auto;max-height:100%">
 
-    <div style="font-size:13px;font-weight:700;letter-spacing:.15em;color:rgba(255,255,255,0.3);text-transform:uppercase;margin-bottom:6px">Get ready</div>
-    <h2 style="font-size:22px;font-weight:700;text-align:center;margin-bottom:20px">Stand like this</h2>
+    <div style="font-size:13px;font-weight:700;letter-spacing:.15em;color:rgba(255,255,255,0.3);text-transform:uppercase;margin-bottom:16px">Get ready</div>
 
-    <!-- SVG posture illustration -->
-    <svg viewBox="0 0 220 340" width="176" height="272" style="margin-bottom:24px;flex-shrink:0">
-      <ellipse cx="100" cy="320" rx="50" ry="8" fill="rgba(126,200,227,0.08)"/>
-      <!-- Head -->
-      <circle cx="100" cy="36" r="22" fill="none" stroke="#7ec8e3" stroke-width="2.5"/>
-      <!-- Neck -->
-      <line x1="100" y1="58" x2="100" y2="72" stroke="#7ec8e3" stroke-width="2.5"/>
-      <!-- Torso -->
-      <path d="M68,72 L132,72 L126,168 L74,168 Z" fill="rgba(126,200,227,0.08)" stroke="#7ec8e3" stroke-width="2.5" stroke-linejoin="round"/>
-      <!-- Arms — slightly out, not spread -->
-      <line x1="132" y1="80" x2="152" y2="148" stroke="#7ec8e3" stroke-width="2.5" stroke-linecap="round"/>
-      <circle cx="152" cy="151" r="4" fill="#7ec8e3"/>
-      <line x1="68" y1="80" x2="48" y2="148" stroke="#7ec8e3" stroke-width="2.5" stroke-linecap="round"/>
-      <circle cx="48" cy="151" r="4" fill="#7ec8e3"/>
-      <!-- Legs -->
-      <line x1="113" y1="168" x2="116" y2="300" stroke="#7ec8e3" stroke-width="2.5" stroke-linecap="round"/>
-      <line x1="87" y1="168" x2="84" y2="300" stroke="#7ec8e3" stroke-width="2.5" stroke-linecap="round"/>
-      <!-- Feet -->
-      <line x1="106" y1="300" x2="126" y2="308" stroke="#7ec8e3" stroke-width="2.5" stroke-linecap="round"/>
-      <line x1="74" y1="300" x2="94" y2="308" stroke="#7ec8e3" stroke-width="2.5" stroke-linecap="round"/>
-
-      <!-- Annotation: arms — slightly out, not spread -->
-      <path d="M158,116 Q172,110 175,100" fill="none" stroke="rgba(237,217,78,0.8)" stroke-width="1.5" stroke-dasharray="3,2"/>
-      <text x="177" y="98"  fill="#EDD94E" font-size="8.5" font-family="monospace" text-anchor="start">slightly</text>
-      <text x="177" y="109" fill="#EDD94E" font-size="8.5" font-family="monospace" text-anchor="start">out —</text>
-      <text x="177" y="120" fill="#EDD94E" font-size="8.5" font-family="monospace" text-anchor="start">not wide</text>
-
-      <!-- Annotation: feet together -->
-      <path d="M128,316 Q138,322 138,328" fill="none" stroke="rgba(76,175,80,0.7)" stroke-width="1.5" stroke-dasharray="3,2"/>
-      <text x="141" y="331" fill="#4CAF50" font-size="8.5" font-family="monospace" text-anchor="start">together</text>
-
-      <!-- Annotation: face forward -->
-      <path d="M126,30 Q140,20 148,22" fill="none" stroke="rgba(200,164,232,0.7)" stroke-width="1.5" stroke-dasharray="3,2"/>
-      <text x="150" y="21" fill="#c8a4e8" font-size="8.5" font-family="monospace" text-anchor="start">face</text>
-      <text x="150" y="32" fill="#c8a4e8" font-size="8.5" font-family="monospace" text-anchor="start">forward</text>
-
-      <!-- Annotation: stand straight -->
-      <path d="M62,120 Q46,118 40,108" fill="none" stroke="rgba(126,200,227,0.6)" stroke-width="1.5" stroke-dasharray="3,2"/>
-      <text x="2"  y="106" fill="#7ec8e3" font-size="8.5" font-family="monospace" text-anchor="start">stand</text>
-      <text x="2"  y="117" fill="#7ec8e3" font-size="8.5" font-family="monospace" text-anchor="start">straight</text>
-    </svg>
+    <!-- Posture photo — posture.jpg in repo root, annotations already baked in -->
+    <div style="width:100%;border-radius:18px;overflow:hidden;margin-bottom:24px;background:#111;flex-shrink:0">
+      <img src="posture.jpg"
+           alt="Stand like this — face forward, arms slightly out not wide, feet together, stand straight"
+           style="width:100%;display:block;object-fit:cover;max-height:400px">
+    </div>
 
     <!-- Tips list — updated from 15-person calibration -->
     <div style="width:100%;display:flex;flex-direction:column;gap:10px;margin-bottom:28px">
