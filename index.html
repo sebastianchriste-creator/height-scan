@@ -1212,6 +1212,19 @@ function calcMeas(pose, heightCm){
   if(waistCm && !baggyClothing && waistCm < heightCm*0.175)
     waistCm=+(waistCm*1.08).toFixed(1);
 
+  // ── POSITIONAL SANITY: chest must be above waist ──────────────────────────
+  // Low-contrast clothing can cause the waist scan to find its narrowest row
+  // in the upper torso and the chest fallback to land lower — visually inverted.
+  // If positions are swapped, swap both the values and the bracket positions so
+  // the overlay stays anatomically honest. Values are still approximate for
+  // dark-clothing cases but at least they display in the correct order.
+  if(chestScrY!=null && waistScrY!=null && chestScrY > waistScrY){
+    let t;
+    t=chestCm;  chestCm=waistCm;  waistCm=t;
+    t=chestSil; chestSil=waistSil; waistSil=t;
+    t=chestScrY;chestScrY=waistScrY;waistScrY=t;
+  }
+
   // Torso: mid-shoulder to mid-hip
   // Hard cap: torso / height tops out at ~32% anatomically (P1–P15 dataset).
   // App readings above 32.5% of height are caused by MoveNet placing hip joints
